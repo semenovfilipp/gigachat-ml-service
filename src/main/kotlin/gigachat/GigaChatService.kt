@@ -7,30 +7,38 @@ import com.mlp.sdk.datatypes.chatgpt.*
 import com.mlp.sdk.utils.JSON
 
 /*
- * Сервисные конфигурации для доступа к YandexGPT
+ * Сервисные конфигурации для доступа к GigaChat
  */
 
-data class InitConfig(val clientId: String,
-                      val clientSecret: String,
-                      val RqUID: String)
+data class InitConfig(
+    val baseUri: String,
+    val clientId: String,
+    val clientSecret: String,
+    val RqUID: String,
+    val scope: String
+)
 
 /*
- * Опциональные конфигурации для настройки запроса к YandexGPT
+ * Опциональные конфигурации для настройки запроса к GigaChat
  */
 data class PredictConfig(
     val systemPrompt: String? = null,
 
-    val maxTokens: Int = 2000,
-    val temperature: Double = 0.6,
-    val stream: Boolean = false
+    val temperature: Float = 1.0F,
+    val top_p: Float = 0.1F,
+    val n: Int = 1,
+    val stream: Boolean = false,
+    val maxTokens: Int = 1024,
+    val repetition_penalty: Float = 1.0F,
+    val update_interval: Int = 0
+
+
 )
 
 
-
-class GigaChatService(override val context: MlpExecutionContext)
-    : MlpPredictWithConfigServiceBase<ChatCompletionRequest,PredictConfig,ChatCompletionResult>
-    (REQUEST_EXAMPLE, PREDICT_CONFIG_EXAMPLE, RESPONSE_EXAMPLE)
-{
+class GigaChatService(override val context: MlpExecutionContext) :
+    MlpPredictWithConfigServiceBase<ChatCompletionRequest, PredictConfig, ChatCompletionResult>
+        (REQUEST_EXAMPLE, PREDICT_CONFIG_EXAMPLE, RESPONSE_EXAMPLE) {
     private val initConfig = JSON.parse(System.getenv()["SERVICE_CONFIG"] ?: "{}", InitConfig::class.java)
     private val defaultPredictConfig = PredictConfig()
 
@@ -41,35 +49,35 @@ class GigaChatService(override val context: MlpExecutionContext)
     }
 
     companion object {
-    val REQUEST_EXAMPLE = ChatCompletionRequest(
-        messages = listOf(
-            ChatMessage(ChatCompletionRole.user, "What is Kotlin")
+        val REQUEST_EXAMPLE = ChatCompletionRequest(
+            messages = listOf(
+                ChatMessage(ChatCompletionRole.user, "What is Kotlin")
 
-        )
-    )
-    val RESPONSE_EXAMPLE = ChatCompletionResult(
-        model = "yandex-gpt-lite",
-        choices = listOf(
-            ChatCompletionChoice(
-                message = ChatMessage(
-                    role = ChatCompletionRole.assistant,
-                    content = "Kotlin is an island"
-                ),
-                index = 11
             )
-        ),
-    )
-    val PREDICT_CONFIG_EXAMPLE = PredictConfig(
-        systemPrompt = "Верни ответ без гласных",
-        maxTokens = 2000,
-        temperature = 0.7,
-        stream = false,
-    )
-}
+        )
+        val RESPONSE_EXAMPLE = ChatCompletionResult(
+            model = "yandex-gpt-lite",
+            choices = listOf(
+                ChatCompletionChoice(
+                    message = ChatMessage(
+                        role = ChatCompletionRole.assistant,
+                        content = "Kotlin is an island"
+                    ),
+                    index = 11
+                )
+            ),
+        )
+        val PREDICT_CONFIG_EXAMPLE = PredictConfig(
+            systemPrompt = "Верни ответ без гласных",
+            maxTokens = 2000,
+            temperature = 0.7,
+            stream = false,
+        )
+    }
 
 
-fun main(){
-    val actionSDK = MlpServiceSDK()
+    fun main() {
+        val actionSDK = MlpServiceSDK()
 
-    actionSDK.st
-}
+        actionSDK.st
+    }
