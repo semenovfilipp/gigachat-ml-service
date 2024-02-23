@@ -12,9 +12,9 @@ import com.mlp.sdk.utils.JSON
 
 data class InitConfig(
     val baseUri: String,
-    val clientId: String,
+//    val clientId: String,
     val clientSecret: String,
-    val RqUID: String,
+//    val RqUID: String,
     val scope: String
 )
 
@@ -24,12 +24,13 @@ data class InitConfig(
 data class PredictConfig(
     val systemPrompt: String? = null,
 
-    val temperature: Float = 1.0F,
-    val top_p: Float = 0.1F,
+    val model : String = "GigaChat",
+    val temperature: Double = 1.0,
+    val top_p: Double = 0.1,
     val n: Int = 1,
     val stream: Boolean = false,
     val maxTokens: Int = 1024,
-    val repetition_penalty: Float = 1.0F,
+    val repetition_penalty: Double = 1.0,
     val update_interval: Int = 0
 )
 
@@ -37,13 +38,67 @@ data class PredictConfig(
 class GigaChatService(override val context: MlpExecutionContext) :
     MlpPredictWithConfigServiceBase<ChatCompletionRequest, PredictConfig, ChatCompletionResult>
         (REQUEST_EXAMPLE, PREDICT_CONFIG_EXAMPLE, RESPONSE_EXAMPLE) {
+
     private val initConfig = JSON.parse(System.getenv()["SERVICE_CONFIG"] ?: "{}", InitConfig::class.java)
     private val defaultPredictConfig = PredictConfig()
 
     private val connector = GigaChatConnector(initConfig)
 
     override fun predict(request: ChatCompletionRequest, config: PredictConfig?): ChatCompletionResult {
-        TODO("Not yet implemented")
+        val messages = mutableListOf<GigaChatMessage>()
+        config?.systemPrompt?.let { systemPrompt ->
+            messages.add(
+                GigaChatMessage(
+                    role = "system",
+                    content = systemPrompt
+                )
+            )
+        }
+        request.messages.forEach { message ->
+            messages.add(
+                GigaChatMessage(
+                    role = message.role.toString(),
+                    content = message.content
+                )
+            )
+        }
+        val gigaChatRequest = GigaChatRequest(
+            model = request.model ?: defaultPredictConfig.model,
+            messages = messages,
+            temperature = request.temperature ?: defaultPredictConfig.temperature,
+            top_p = request.topP ?: defaultPredictConfig.top_p,
+            n = request.n ?: defaultPredictConfig.n,
+            stream = defaultPredictConfig.stream,
+            maxTokens = request.maxTokens ?: defaultPredictConfig.maxTokens,
+            repetition_penalty = request.frequencyPenalty ?: defaultPredictConfig.repetition_penalty,
+            update_interval = request.presencePenalty?.toInt() ?: defaultPredictConfig.update_interval
+        )
+        val resultResponse = connector.sendMessageToGigaChat(gigaChatRequest)
+
+        val choices = resultResponse.choices.map {
+            ChatCompletionChoice(
+                message = ChatMessage(
+                    role = ChatCompletionRole.assistant,
+                    content = it.message.content
+                ),
+                index = it.index,
+                finishReason = ChatCompletionChoiceFinishReason.stop
+            )
+        }
+        val usage = Usage(
+            promptTokens = resultResponse.usage.prompt_tokens.toLong(),
+            completionTokens = resultResponse.usage.completion_tokens.toLong(),
+            totalTokens = resultResponse.usage.total_tokens.toLong(),
+        )
+
+        return ChatCompletionResult(
+            id = null,
+            `object` = resultResponse.`object`,
+            created = resultResponse.created,
+            model = resultResponse.model,
+            choices = choices,
+            usage = usage
+        )
     }
 
     companion object {
@@ -72,10 +127,10 @@ class GigaChatService(override val context: MlpExecutionContext) :
             stream = false,
         )
     }
+}
+fun main() {
+    val actionSDK = MlpServiceSDK({ GigaChatService(MlpExecutionContext.systemContext) })
 
-
-    fun main() {
-        val actionSDK = MlpServiceSDK()
-
-        actionSDK.st
-    }
+    actionSDK.start()
+    actionSDK.blockUntilShutdown()
+}
