@@ -31,8 +31,6 @@ data class PredictConfig(
     val maxTokens: Int = 1024,
     val repetition_penalty: Float = 1.0F,
     val update_interval: Int = 0
-
-
 )
 
 
