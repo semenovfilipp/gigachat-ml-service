@@ -140,10 +140,10 @@ fun main() {
     val actionSDK = MlpServiceSDK({ GigaChatService(MlpExecutionContext.systemContext) })
 
     val currentDir = System.getProperty("user.dir")
-    val certPath = Path("$currentDir/cert/russiantrustedca.pem")
+    val certRootPath = Path("$currentDir/cert/russian_trusted_root_ca_pem.crt")
+    val certSubPath = Path("$currentDir/cert/russian_trusted_sub_ca_pem.crt")
 
-    System.setProperty("javax.net.ssl.trustStore", certPath.toString())
-    System.setProperty("NODE_TLS_REJECT_UNAUTHORIZED", "0")
+    System.setProperty("javax.net.ssl.trustStore", certRootPath.toString())
 
 
     actionSDK.start()
