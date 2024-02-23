@@ -1,10 +1,13 @@
 package gigachat
 
+import com.mlp.sdk.BillingUnitsThreadLocal
 import com.mlp.sdk.MlpExecutionContext
 import com.mlp.sdk.MlpPredictWithConfigServiceBase
 import com.mlp.sdk.MlpServiceSDK
 import com.mlp.sdk.datatypes.chatgpt.*
 import com.mlp.sdk.utils.JSON
+import java.nio.file.Paths
+import kotlin.io.path.Path
 
 /*
  * Сервисные конфигурации для доступа к GigaChat
@@ -75,6 +78,11 @@ class GigaChatService(override val context: MlpExecutionContext) :
         )
         val resultResponse = connector.sendMessageToGigaChat(gigaChatRequest)
 
+        val totalTokens = resultResponse.usage.total_tokens
+        val totalCost = (totalTokens * (0.2 / 1000)).toLong()
+        BillingUnitsThreadLocal.setUnits(totalCost)
+
+
         val choices = resultResponse.choices.map {
             ChatCompletionChoice(
                 message = ChatMessage(
@@ -130,6 +138,13 @@ class GigaChatService(override val context: MlpExecutionContext) :
 }
 fun main() {
     val actionSDK = MlpServiceSDK({ GigaChatService(MlpExecutionContext.systemContext) })
+
+    val currentDir = System.getProperty("user.dir")
+    val certPath = Path("$currentDir/cert/russiantrustedca.pem")
+
+    System.setProperty("javax.net.ssl.trustStore", certPath.toString())
+    System.setProperty("NODE_TLS_REJECT_UNAUTHORIZED", "0")
+
 
     actionSDK.start()
     actionSDK.blockUntilShutdown()

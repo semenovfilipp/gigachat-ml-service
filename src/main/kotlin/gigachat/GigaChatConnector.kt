@@ -6,11 +6,12 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
+import java.util.*
 
 /*
  * Константы для аутентификации GigaChat
  */
-private const val URL_GIGA_CHAT_COMPLETION = "https://gigachat.devices.sberbank.ru/api/v1/chat/completions\n"
+private const val URL_GIGA_CHAT_COMPLETION = "https://gigachat.devices.sberbank.ru/api/v1/chat/completions"
 private val MEDIA_TYPE_JSON = "application/json".toMediaType()
 private const val TOKEN_EXPIRATION_DURATION = 30 * 60 * 1000
 

@@ -16,7 +16,7 @@
                 <include>*</include>
             </includes>
             <excludes>
-                <exclude>*:yandex-ml-service</exclude>
+                <exclude>*:gigachat-ml-service</exclude>
             </excludes>
             <outputFileNameMapping>${artifact.artifactId}.${artifact.extension}</outputFileNameMapping>
         </dependencySet>
@@ -24,7 +24,7 @@
             <scope>runtime</scope>
             <outputDirectory>.</outputDirectory>
             <includes>
-                <include>*:yandex-ml-service</include>
+                <include>*:gigachat-ml-service</include>
             </includes>
             <outputFileNameMapping>${artifact.artifactId}.${artifact.extension}</outputFileNameMapping>
         </dependencySet>
