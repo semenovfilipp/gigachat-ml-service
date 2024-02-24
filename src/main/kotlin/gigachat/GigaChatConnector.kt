@@ -84,6 +84,29 @@ class GigaChatConnector(val initConfig: InitConfig) {
     fun sendMessageToGigaChat(gigaReq: GigaChatRequest): GigaChatResponse {
         updateBearerToken()
 
+        val certPath = "/Users/Felichita/Documents/IDEA/gigachat-ml-service/cert/russiantrustedca.pem"
+
+        val trustManagerFactory = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm())
+        val trustStore = KeyStore.getInstance(KeyStore.getDefaultType()).apply {
+            load(null)
+            FileInputStream(certPath).use { inputStream ->
+                setCertificateEntry("certificateAlias", CertificateFactory.getInstance("X.509").generateCertificate(inputStream))
+            }
+        }
+        trustManagerFactory.init(trustStore)
+
+        val sslContext = SSLContext.getInstance("TLS").apply {
+            init(null, trustManagerFactory.trustManagers, null)
+        }
+
+        val client = OkHttpClient.Builder()
+            .sslSocketFactory(sslContext.socketFactory, trustManagerFactory.trustManagers.first() as X509TrustManager)
+            .build()
+
+//        val formBody = FormBody.Builder()
+//            .add("scope", "GIGACHAT_API_PERS")
+//            .build()
+
         val request = Request.Builder()
             .url(URL_GIGA_CHAT_COMPLETION)
             .header("Authorization", "Bearer $bearerToken")
@@ -92,11 +115,11 @@ class GigaChatConnector(val initConfig: InitConfig) {
             .post(JSON.stringify(gigaReq).toRequestBody(MEDIA_TYPE_JSON))
             .build()
 
-        val response = httpClient.newCall(request).execute()
+        val response = client.newCall(request).execute()
         if (!response.isSuccessful) {
             throw IOException("Unexpected code ${response.code}")
         }
-        return JSON.parse(response.body!!.toString(), GigaChatResponse::class.java)
+        return JSON.parse(response.body!!.string(), GigaChatResponse::class.java)
     }
 
     /*
