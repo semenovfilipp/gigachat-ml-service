@@ -77,9 +77,10 @@ class GigaChatService(override val context: MlpExecutionContext) :
         )
         val resultResponse = connector.sendMessageToGigaChat(gigaChatRequest)
 
-        val totalTokens = resultResponse.usage.total_tokens
-        val totalCost = (totalTokens * (0.2 / 1000)).toLong()
-        BillingUnitsThreadLocal.setUnits(totalCost)
+        val totalTokens = (resultResponse.usage.total_tokens).toLong()
+        val totalCost = (((totalTokens * 0.2 / 1000.0) * 100).toLong() / 100.0)
+
+        BillingUnitsThreadLocal.setUnits(totalCost.toLong())
 
 
         val choices = resultResponse.choices.map {
