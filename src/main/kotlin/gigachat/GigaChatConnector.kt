@@ -1,12 +1,18 @@
 package gigachat
 
 import com.mlp.sdk.utils.JSON
+import okhttp3.FormBody
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.io.FileInputStream
 import java.io.IOException
-import java.util.*
+import java.security.KeyStore
+import java.security.cert.CertificateFactory
+import javax.net.ssl.SSLContext
+import javax.net.ssl.TrustManagerFactory
+import javax.net.ssl.X509TrustManager
 
 /*
  * Константы для аутентификации GigaChat
@@ -14,6 +20,8 @@ import java.util.*
 private const val URL_GIGA_CHAT_COMPLETION = "https://gigachat.devices.sberbank.ru/api/v1/chat/completions"
 private val MEDIA_TYPE_JSON = "application/json".toMediaType()
 private const val TOKEN_EXPIRATION_DURATION = 30 * 60 * 1000
+var ROOT_CERT_PATH = ""
+var SUB_CERT_PATH = ""
 
 /*
  * Дата классы запроса в GigaChat
@@ -67,7 +75,6 @@ data class Usage(
 
 class GigaChatConnector(val initConfig: InitConfig) {
     private val httpClient = OkHttpClient()
-
     private var tokenExpirationTime: Long = 0L
     private var bearerToken: String = ""
 
@@ -107,22 +114,44 @@ class GigaChatConnector(val initConfig: InitConfig) {
      * Получение нового BearerToken
      */
     private fun getNewBearerToken(): String {
-        val mediaType = "application/x-www-form-urlencoded".toMediaType()
-        val body = initConfig.scope.toRequestBody(mediaType)
 
-        val request = Request.Builder()
-            .url(initConfig.baseUri)
-            .method("POST", body)
-            .header("Content-Type", "application/x-www-form-urlencoded")
-            .header("Accept", "application/json")
-            .header("Authorization", "Basic ${initConfig.clientSecret}")
+        val certPath = "/Users/Felichita/Documents/IDEA/gigachat-ml-service/cert/russiantrustedca.pem"
+
+        val trustManagerFactory = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm())
+        val trustStore = KeyStore.getInstance(KeyStore.getDefaultType()).apply {
+            load(null)
+            FileInputStream(certPath).use { inputStream ->
+                setCertificateEntry("certificateAlias", CertificateFactory.getInstance("X.509").generateCertificate(inputStream))
+            }
+        }
+        trustManagerFactory.init(trustStore)
+
+        val sslContext = SSLContext.getInstance("TLS").apply {
+            init(null, trustManagerFactory.trustManagers, null)
+        }
+
+        val client = OkHttpClient.Builder()
+            .sslSocketFactory(sslContext.socketFactory, trustManagerFactory.trustManagers.first() as X509TrustManager)
             .build()
 
-        val response = httpClient.newCall(request).execute()
+        val formBody = FormBody.Builder()
+            .add("scope", "GIGACHAT_API_PERS")
+            .build()
+
+        val request = Request.Builder()
+            .url("https://ngw.devices.sberbank.ru:9443/api/v2/oauth")
+            .post(formBody)
+            .addHeader("Content-Type", "application/x-www-form-urlencoded")
+            .addHeader("Accept", "application/json")
+            .addHeader("RqUID", "b8ddbc67-b027-46fc-a9d1-a2eb705dc892")
+            .addHeader("Authorization", "Basic NGEyOGZmZWUtOTQ2Yy00ZjA5LWIyYTYtN2EwYjNiZThiYjRlOjZhZDZlOTU5LTczZTYtNDU5Yi1hODE1LTg3Mzk4MTA2MzM3Nw==")
+            .build()
+
+        val response = client.newCall(request).execute()
         if (!response.isSuccessful) {
             throw IOException("Unexpected code ${response.code}")
         }
-        val responseData = response.body!!.toString()
+        val responseData = response.body!!.string()
         return JSON.parse(responseData)["access_token"]!!.asText()
     }
 

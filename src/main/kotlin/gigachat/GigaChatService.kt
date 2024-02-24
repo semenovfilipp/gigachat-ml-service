@@ -6,7 +6,6 @@ import com.mlp.sdk.MlpPredictWithConfigServiceBase
 import com.mlp.sdk.MlpServiceSDK
 import com.mlp.sdk.datatypes.chatgpt.*
 import com.mlp.sdk.utils.JSON
-import java.nio.file.Paths
 import kotlin.io.path.Path
 
 /*
@@ -17,7 +16,7 @@ data class InitConfig(
     val baseUri: String,
 //    val clientId: String,
     val clientSecret: String,
-//    val RqUID: String,
+    val RqUID: String,
     val scope: String
 )
 
@@ -140,10 +139,11 @@ fun main() {
     val actionSDK = MlpServiceSDK({ GigaChatService(MlpExecutionContext.systemContext) })
 
     val currentDir = System.getProperty("user.dir")
-    val certRootPath = Path("$currentDir/cert/russian_trusted_root_ca_pem.crt")
-    val certSubPath = Path("$currentDir/cert/russian_trusted_sub_ca_pem.crt")
+    ROOT_CERT_PATH = Path("$currentDir/cert/russian_trusted_root_ca_pem.crt").toString()
+    SUB_CERT_PATH = Path("$currentDir/cert/russian_trusted_sub_ca_pem.crt").toString()
 
-    System.setProperty("javax.net.ssl.trustStore", certRootPath.toString())
+
+
 
 
     actionSDK.start()
