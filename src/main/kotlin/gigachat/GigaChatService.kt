@@ -111,17 +111,17 @@ class GigaChatService(override val context: MlpExecutionContext) :
     companion object {
         val REQUEST_EXAMPLE = ChatCompletionRequest(
             messages = listOf(
-                ChatMessage(ChatCompletionRole.user, "What is Kotlin")
+                ChatMessage(ChatCompletionRole.user, "Hello")
 
             )
         )
         val RESPONSE_EXAMPLE = ChatCompletionResult(
-            model = "yandex-gpt-lite",
+            model = "GigaChat",
             choices = listOf(
                 ChatCompletionChoice(
                     message = ChatMessage(
                         role = ChatCompletionRole.assistant,
-                        content = "Kotlin is an island"
+                        content = "Hll"
                     ),
                     index = 11
                 )
