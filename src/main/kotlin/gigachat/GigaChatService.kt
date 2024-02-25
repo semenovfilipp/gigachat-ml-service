@@ -142,9 +142,6 @@ fun main() {
     CERT_PATH = Path("$currentDir/cert/russiantrustedca.pem").toString()
 
 
-
-
-
     actionSDK.start()
     actionSDK.blockUntilShutdown()
 }

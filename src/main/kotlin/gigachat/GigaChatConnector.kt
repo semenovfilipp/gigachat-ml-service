@@ -21,7 +21,6 @@ private const val URL_GIGA_CHAT_COMPLETION = "https://gigachat.devices.sberbank.
 private val MEDIA_TYPE_JSON = "application/json".toMediaType()
 private const val TOKEN_EXPIRATION_DURATION = 30 * 60 * 1000
 var CERT_PATH = ""
-var SUB_CERT_PATH = ""
 
 /*
  * Дата классы запроса в GigaChat
@@ -74,7 +73,6 @@ data class Usage(
 
 
 class GigaChatConnector(val initConfig: InitConfig) {
-    private val httpClient = OkHttpClient()
     private var tokenExpirationTime: Long = 0L
     private var bearerToken: String = ""
 
@@ -84,22 +82,7 @@ class GigaChatConnector(val initConfig: InitConfig) {
     fun sendMessageToGigaChat(gigaReq: GigaChatRequest): GigaChatResponse {
         updateBearerToken()
 
-        val trustManagerFactory = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm())
-        val trustStore = KeyStore.getInstance(KeyStore.getDefaultType()).apply {
-            load(null)
-            FileInputStream(CERT_PATH).use { inputStream ->
-                setCertificateEntry("certificateAlias", CertificateFactory.getInstance("X.509").generateCertificate(inputStream))
-            }
-        }
-        trustManagerFactory.init(trustStore)
-
-        val sslContext = SSLContext.getInstance("TLS").apply {
-            init(null, trustManagerFactory.trustManagers, null)
-        }
-
-        val client = OkHttpClient.Builder()
-            .sslSocketFactory(sslContext.socketFactory, trustManagerFactory.trustManagers.first() as X509TrustManager)
-            .build()
+        val client = configureSSLClient()
 
 
         val request = Request.Builder()
@@ -132,25 +115,7 @@ class GigaChatConnector(val initConfig: InitConfig) {
      * Получение нового BearerToken
      */
     private fun getNewBearerToken(): String {
-
-        val certPath = "/Users/Felichita/Documents/IDEA/gigachat-ml-service/cert/russiantrustedca.pem"
-
-        val trustManagerFactory = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm())
-        val trustStore = KeyStore.getInstance(KeyStore.getDefaultType()).apply {
-            load(null)
-            FileInputStream(certPath).use { inputStream ->
-                setCertificateEntry("certificateAlias", CertificateFactory.getInstance("X.509").generateCertificate(inputStream))
-            }
-        }
-        trustManagerFactory.init(trustStore)
-
-        val sslContext = SSLContext.getInstance("TLS").apply {
-            init(null, trustManagerFactory.trustManagers, null)
-        }
-
-        val client = OkHttpClient.Builder()
-            .sslSocketFactory(sslContext.socketFactory, trustManagerFactory.trustManagers.first() as X509TrustManager)
-            .build()
+        val client = configureSSLClient()
 
         val formBody = FormBody.Builder()
             .add("scope", initConfig.scope)
@@ -171,6 +136,33 @@ class GigaChatConnector(val initConfig: InitConfig) {
         }
         val responseData = response.body!!.string()
         return JSON.parse(responseData)["access_token"]!!.asText()
+    }
+
+    /*
+     *  Настройка клиента OkHttpClient
+     * для установки SSL-соединения с сервером
+     */
+    private fun configureSSLClient(): OkHttpClient {
+        val trustManagerFactory = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm())
+        val trustStore = KeyStore.getInstance(KeyStore.getDefaultType()).apply {
+            load(null)
+            FileInputStream(CERT_PATH).use { inputStream ->
+                setCertificateEntry(
+                    "certificateAlias",
+                    CertificateFactory.getInstance("X.509").generateCertificate(inputStream)
+                )
+            }
+        }
+        trustManagerFactory.init(trustStore)
+
+        val sslContext = SSLContext.getInstance("TLS").apply {
+            init(null, trustManagerFactory.trustManagers, null)
+        }
+
+        val client = OkHttpClient.Builder()
+            .sslSocketFactory(sslContext.socketFactory, trustManagerFactory.trustManagers.first() as X509TrustManager)
+            .build()
+        return client
     }
 
 }
