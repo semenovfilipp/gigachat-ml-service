@@ -14,7 +14,6 @@ import kotlin.io.path.Path
 
 data class InitConfig(
     val baseUri: String,
-//    val clientId: String,
     val clientSecret: String,
     val RqUID: String,
     val scope: String
@@ -140,8 +139,7 @@ fun main() {
     val actionSDK = MlpServiceSDK({ GigaChatService(MlpExecutionContext.systemContext) })
 
     val currentDir = System.getProperty("user.dir")
-    ROOT_CERT_PATH = Path("$currentDir/cert/russian_trusted_root_ca_pem.crt").toString()
-    SUB_CERT_PATH = Path("$currentDir/cert/russian_trusted_sub_ca_pem.crt").toString()
+    CERT_PATH = Path("$currentDir/cert/russiantrustedca.pem").toString()
 
 
 

@@ -20,7 +20,7 @@ import javax.net.ssl.X509TrustManager
 private const val URL_GIGA_CHAT_COMPLETION = "https://gigachat.devices.sberbank.ru/api/v1/chat/completions"
 private val MEDIA_TYPE_JSON = "application/json".toMediaType()
 private const val TOKEN_EXPIRATION_DURATION = 30 * 60 * 1000
-var ROOT_CERT_PATH = ""
+var CERT_PATH = ""
 var SUB_CERT_PATH = ""
 
 /*
@@ -84,12 +84,10 @@ class GigaChatConnector(val initConfig: InitConfig) {
     fun sendMessageToGigaChat(gigaReq: GigaChatRequest): GigaChatResponse {
         updateBearerToken()
 
-        val certPath = "/Users/Felichita/Documents/IDEA/gigachat-ml-service/cert/russiantrustedca.pem"
-
         val trustManagerFactory = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm())
         val trustStore = KeyStore.getInstance(KeyStore.getDefaultType()).apply {
             load(null)
-            FileInputStream(certPath).use { inputStream ->
+            FileInputStream(CERT_PATH).use { inputStream ->
                 setCertificateEntry("certificateAlias", CertificateFactory.getInstance("X.509").generateCertificate(inputStream))
             }
         }
@@ -103,9 +101,6 @@ class GigaChatConnector(val initConfig: InitConfig) {
             .sslSocketFactory(sslContext.socketFactory, trustManagerFactory.trustManagers.first() as X509TrustManager)
             .build()
 
-//        val formBody = FormBody.Builder()
-//            .add("scope", "GIGACHAT_API_PERS")
-//            .build()
 
         val request = Request.Builder()
             .url(URL_GIGA_CHAT_COMPLETION)
@@ -158,16 +153,16 @@ class GigaChatConnector(val initConfig: InitConfig) {
             .build()
 
         val formBody = FormBody.Builder()
-            .add("scope", "GIGACHAT_API_PERS")
+            .add("scope", initConfig.scope)
             .build()
 
         val request = Request.Builder()
-            .url("https://ngw.devices.sberbank.ru:9443/api/v2/oauth")
+            .url(initConfig.baseUri)
             .post(formBody)
             .addHeader("Content-Type", "application/x-www-form-urlencoded")
             .addHeader("Accept", "application/json")
-            .addHeader("RqUID", "b8ddbc67-b027-46fc-a9d1-a2eb705dc892")
-            .addHeader("Authorization", "Basic NGEyOGZmZWUtOTQ2Yy00ZjA5LWIyYTYtN2EwYjNiZThiYjRlOjZhZDZlOTU5LTczZTYtNDU5Yi1hODE1LTg3Mzk4MTA2MzM3Nw==")
+            .addHeader("RqUID", initConfig.RqUID)
+            .addHeader("Authorization", "Basic ${initConfig.clientSecret}")
             .build()
 
         val response = client.newCall(request).execute()
