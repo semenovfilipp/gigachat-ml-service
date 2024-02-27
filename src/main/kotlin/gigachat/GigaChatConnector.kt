@@ -1,6 +1,10 @@
 package gigachat
 
 import com.mlp.sdk.utils.JSON
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
 import okhttp3.FormBody
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -165,4 +169,24 @@ class GigaChatConnector(val initConfig: InitConfig) {
         return client
     }
 
+    fun sendMessageToGigaChatAsync(gigaReq: GigaChatRequest): Flow<GigaChatResponse> = flow {
+        updateBearerToken()
+
+        val client = configureSSLClient()
+
+        val request = Request.Builder()
+            .url(URL_GIGA_CHAT_COMPLETION)
+            .header("Authorization", "Bearer $bearerToken")
+            .header("Accept", "application/json")
+            .header("Content-Type", "application/json")
+            .post(JSON.stringify(gigaReq).toRequestBody(MEDIA_TYPE_JSON))
+            .build()
+        val response = client.newCall(request).execute()
+        if (!response.isSuccessful) {
+            throw IOException("Unexpected code ${response.code}")
+        }
+        val gigaChatResponse = JSON.parse<GigaChatResponse>(response.body!!.string())
+        emit(gigaChatResponse)
+    }.flowOn(Dispatchers.IO)
 }
+
