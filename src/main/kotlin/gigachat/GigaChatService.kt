@@ -6,6 +6,10 @@ import com.mlp.sdk.MlpPredictWithConfigServiceBase
 import com.mlp.sdk.MlpServiceSDK
 import com.mlp.sdk.datatypes.chatgpt.*
 import com.mlp.sdk.utils.JSON
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.runBlocking
 import kotlin.io.path.Path
 
 /*
@@ -77,7 +81,6 @@ class GigaChatService(override val context: MlpExecutionContext) :
             repetition_penalty = request.frequencyPenalty ?: config?.repetition_penalty ?: defaultPredictConfig.repetition_penalty,
             update_interval = request.presencePenalty?.toInt() ?: config?.update_interval ?: defaultPredictConfig.update_interval
         )
-        val resultResponse = connector.sendMessageToGigaChat(gigaChatRequest)
 
         val priceRubPerMillion =
                     if (request.model == "GigaChat-Pro") 1500       /*GigaChat Lite*/
@@ -89,6 +92,12 @@ class GigaChatService(override val context: MlpExecutionContext) :
         val priceInNanoTokens = priceInMicroRoubles * 50 * 1000
 
         BillingUnitsThreadLocal.setUnits(priceInNanoTokens)
+        return runBlocking {
+            connector.sendMessageToGigaChatAsync(gigaChatRequest)
+                .map { gigaChatResponse ->
+                    val totalTokens = gigaChatResponse.usage.total_tokens.toLong()
+                    val totalCost = (((totalTokens * 0.2 / 1000.0) * 100).toLong() / 100.0)
+                    BillingUnitsThreadLocal.setUnits(totalCost.toLong())
 
 
         val choices = resultResponse.choices.map {
@@ -114,7 +123,69 @@ class GigaChatService(override val context: MlpExecutionContext) :
             choices = choices,
             usage = usage
         )
+                    val choices = gigaChatResponse.choices.map {
+                        ChatCompletionChoice(
+                            message = ChatMessage(
+                                role = ChatCompletionRole.assistant,
+                                content = it.message.content
+                            ),
+                            index = it.index,
+                            finishReason = ChatCompletionChoiceFinishReason.stop
+                        )
+                    }
+                    val usage = Usage(
+                        promptTokens = gigaChatResponse.usage.prompt_tokens.toLong(),
+                        completionTokens = gigaChatResponse.usage.completion_tokens.toLong(),
+                        totalTokens = gigaChatResponse.usage.total_tokens.toLong(),
+                    )
+                    ChatCompletionResult(
+                        id = null,
+                        `object` = gigaChatResponse.`object`,
+                        created = gigaChatResponse.created,
+                        model = gigaChatResponse.model,
+                        choices = choices,
+                        usage = usage
+                    )
+                }
+                .toList()
+                .first()
+        }
     }
+
+
+//        val resultResponse = connector.sendMessageToGigaChat(gigaChatRequest)
+//
+//        val totalTokens = (resultResponse.usage.total_tokens).toLong()
+//        val totalCost = (((totalTokens * 0.2 / 1000.0) * 100).toLong() / 100.0)
+//
+//        BillingUnitsThreadLocal.setUnits(totalCost.toLong())
+//
+//
+//        val choices = resultResponse.choices.map {
+//            ChatCompletionChoice(
+//                message = ChatMessage(
+//                    role = ChatCompletionRole.assistant,
+//                    content = it.message.content
+//                ),
+//                index = it.index,
+//                finishReason = ChatCompletionChoiceFinishReason.stop
+//            )
+//        }
+//        val usage = Usage(
+//            promptTokens = resultResponse.usage.prompt_tokens.toLong(),
+//            completionTokens = resultResponse.usage.completion_tokens.toLong(),
+//            totalTokens = resultResponse.usage.total_tokens.toLong(),
+//        )
+//
+//        return ChatCompletionResult(
+//            id = null,
+//            `object` = resultResponse.`object`,
+//            created = resultResponse.created,
+//            model = resultResponse.model,
+//            choices = choices,
+//            usage = usage
+//        )
+//    }
 
     companion object {
         val REQUEST_EXAMPLE = ChatCompletionRequest(
