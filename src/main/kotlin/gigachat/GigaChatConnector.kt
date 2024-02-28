@@ -10,6 +10,7 @@ import java.io.FileInputStream
 import java.io.IOException
 import java.security.KeyStore
 import java.security.cert.CertificateFactory
+import java.util.UUID
 import javax.net.ssl.SSLContext
 import javax.net.ssl.TrustManagerFactory
 import javax.net.ssl.X509TrustManager
@@ -76,14 +77,12 @@ class GigaChatConnector(val initConfig: InitConfig) {
     private var tokenExpirationTime: Long = 0L
     private var bearerToken: String = ""
 
+    private val client = configureSSLClient()
     /*
      * Отправление запроса на сервер GigaChat
      */
     fun sendMessageToGigaChat(gigaReq: GigaChatRequest): GigaChatResponse {
         updateBearerToken()
-
-        val client = configureSSLClient()
-
 
         val request = Request.Builder()
             .url(URL_GIGA_CHAT_COMPLETION)
@@ -104,7 +103,7 @@ class GigaChatConnector(val initConfig: InitConfig) {
      * Обновление BearerToken
      */
     private fun updateBearerToken() {
-        if (tokenExpirationTime >= System.currentTimeMillis() || bearerToken.isNullOrEmpty()) {
+        if (tokenExpirationTime >= System.currentTimeMillis() || bearerToken.isEmpty()) {
             val newToken = getNewBearerToken()
             bearerToken = newToken
             tokenExpirationTime = System.currentTimeMillis() + TOKEN_EXPIRATION_DURATION
@@ -115,8 +114,6 @@ class GigaChatConnector(val initConfig: InitConfig) {
      * Получение нового BearerToken
      */
     private fun getNewBearerToken(): String {
-        val client = configureSSLClient()
-
         val formBody = FormBody.Builder()
             .add("scope", initConfig.scope)
             .build()
@@ -126,7 +123,7 @@ class GigaChatConnector(val initConfig: InitConfig) {
             .post(formBody)
             .addHeader("Content-Type", "application/x-www-form-urlencoded")
             .addHeader("Accept", "application/json")
-            .addHeader("RqUID", initConfig.RqUID)
+            .addHeader("RqUID", UUID.randomUUID().toString())
             .addHeader("Authorization", "Basic ${initConfig.clientSecret}")
             .build()
 

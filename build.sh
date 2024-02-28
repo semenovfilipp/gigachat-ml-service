@@ -11,7 +11,8 @@ BUILD_BRANCH=$(git rev-parse --abbrev-ref HEAD)
 BRANCH_NAME_LOWER=$(echo "$BUILD_BRANCH" | tr '[:upper:]' '[:lower:]')
 
 ## Other environment
-SECRET=$(LC_CTYPE=C tr -dc 'a-z0-9' </dev/urandom | head -c 24)
+#SECRET=$(LC_CTYPE=C tr -dc 'a-z0-9' </dev/urandom | head -c 24)
+SECRET=p8smccsnrr6ogzamx6sx7bfp
 
 # Linux
 #SECRET_FILE=~/.mlp-secret-$SERVICE_NAME
@@ -19,12 +20,6 @@ SECRET=$(LC_CTYPE=C tr -dc 'a-z0-9' </dev/urandom | head -c 24)
 #    echo $(tr -dc a-z0-9 </dev/urandom | head -c 24) > $SECRET_FILE
 #fi
 #SECRET=$(cat $SECRET_FILE)
-
-
-
-
-
-
 
 IMAGE=docker-pub.caila.io/caila-public/$SERVICE_NAME-$SECRET:$BRANCH_NAME_LOWER
 

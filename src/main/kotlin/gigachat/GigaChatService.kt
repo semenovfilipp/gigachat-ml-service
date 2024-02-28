@@ -15,7 +15,6 @@ import kotlin.io.path.Path
 data class InitConfig(
     val baseUri: String,
     val clientSecret: String,
-    val RqUID: String,
     val scope: String
 )
 
@@ -26,6 +25,8 @@ data class PredictConfig(
     val systemPrompt: String? = null,
 
     val model : String = "GigaChat",
+            // GigaChat, GigaChat:latest, GigaChat-Plus, GigaChat-Pro
+
     val temperature: Double = 1.0,
     val top_p: Double = 0.1,
     val n: Int = 1,
@@ -47,13 +48,15 @@ class GigaChatService(override val context: MlpExecutionContext) :
 
     override fun predict(request: ChatCompletionRequest, config: PredictConfig?): ChatCompletionResult {
         val messages = mutableListOf<GigaChatMessage>()
-        config?.systemPrompt?.let { systemPrompt ->
-            messages.add(
-                GigaChatMessage(
-                    role = "system",
-                    content = systemPrompt
+        if (request.messages.find { it.role == ChatCompletionRole.system } == null) {
+            config?.systemPrompt?.let { systemPrompt ->
+                messages.add(
+                    GigaChatMessage(
+                        role = "system",
+                        content = systemPrompt
+                    )
                 )
-            )
+            }
         }
         request.messages.forEach { message ->
             messages.add(
@@ -64,22 +67,28 @@ class GigaChatService(override val context: MlpExecutionContext) :
             )
         }
         val gigaChatRequest = GigaChatRequest(
-            model = request.model ?: defaultPredictConfig.model,
+            model = request.model ?: config?.model ?: defaultPredictConfig.model,
             messages = messages,
-            temperature = request.temperature ?: defaultPredictConfig.temperature,
-            top_p = request.topP ?: defaultPredictConfig.top_p,
-            n = request.n ?: defaultPredictConfig.n,
+            temperature = request.temperature ?: config?.temperature ?:defaultPredictConfig.temperature,
+            top_p = request.topP ?: config?.top_p ?: defaultPredictConfig.top_p,
+            n = request.n ?: config?.n ?: defaultPredictConfig.n,
             stream = defaultPredictConfig.stream,
-            maxTokens = request.maxTokens ?: defaultPredictConfig.maxTokens,
-            repetition_penalty = request.frequencyPenalty ?: defaultPredictConfig.repetition_penalty,
-            update_interval = request.presencePenalty?.toInt() ?: defaultPredictConfig.update_interval
+            maxTokens = request.maxTokens ?: config?.maxTokens ?: defaultPredictConfig.maxTokens,
+            repetition_penalty = request.frequencyPenalty ?: config?.repetition_penalty ?: defaultPredictConfig.repetition_penalty,
+            update_interval = request.presencePenalty?.toInt() ?: config?.update_interval ?: defaultPredictConfig.update_interval
         )
         val resultResponse = connector.sendMessageToGigaChat(gigaChatRequest)
 
-        val totalTokens = (resultResponse.usage.total_tokens).toLong()
-        val totalCost = (((totalTokens * 0.2 / 1000.0) * 100).toLong() / 100.0)
+        val priceRubPerMillion =
+                    if (request.model == "GigaChat-Pro") 1500       /*GigaChat Lite*/
+                    else 200                                        /*GigaChat Pro*/
 
-        BillingUnitsThreadLocal.setUnits(totalCost.toLong())
+        val totalTokens = (resultResponse.usage.total_tokens).toLong()
+
+        val priceInMicroRoubles = totalTokens * priceRubPerMillion
+        val priceInNanoTokens = priceInMicroRoubles * 50 * 1000
+
+        BillingUnitsThreadLocal.setUnits(priceInNanoTokens)
 
 
         val choices = resultResponse.choices.map {
@@ -99,7 +108,6 @@ class GigaChatService(override val context: MlpExecutionContext) :
         )
 
         return ChatCompletionResult(
-            id = null,
             `object` = resultResponse.`object`,
             created = resultResponse.created,
             model = resultResponse.model,
@@ -136,11 +144,10 @@ class GigaChatService(override val context: MlpExecutionContext) :
     }
 }
 fun main() {
-    val actionSDK = MlpServiceSDK({ GigaChatService(MlpExecutionContext.systemContext) })
-
     val currentDir = System.getProperty("user.dir")
     CERT_PATH = Path("$currentDir/cert/russiantrustedca.pem").toString()
 
+    val actionSDK = MlpServiceSDK({ GigaChatService(MlpExecutionContext.systemContext) })
 
     actionSDK.start()
     actionSDK.blockUntilShutdown()
