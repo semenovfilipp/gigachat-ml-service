@@ -2,13 +2,10 @@ package gigachat
 
 import com.mlp.sdk.utils.JSON
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.flowOn
-import okhttp3.FormBody
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.*
+import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
-import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.FileInputStream
 import java.io.IOException
@@ -82,6 +79,7 @@ class GigaChatConnector(val initConfig: InitConfig) {
     private var bearerToken: String = ""
 
     private val client = configureSSLClient()
+
     /*
      * Отправление запроса на сервер GigaChat
      */
@@ -166,24 +164,36 @@ class GigaChatConnector(val initConfig: InitConfig) {
         return client
     }
 
-    fun sendMessageToGigaChatAsync(gigaReq: GigaChatRequest): Flow<GigaChatResponse> = flow {
-        updateBearerToken()
+    fun sendMessageToGigaChatAsync(gigaReq: GigaChatRequest): Flow<GigaChatResponse> {
+        return flow {
+            updateBearerToken()
 
-        val client = configureSSLClient()
+            val client = configureSSLClient()
 
-        val request = Request.Builder()
-            .url(URL_GIGA_CHAT_COMPLETION)
-            .header("Authorization", "Bearer $bearerToken")
-            .header("Accept", "application/json")
-            .header("Content-Type", "application/json")
-            .post(JSON.stringify(gigaReq).toRequestBody(MEDIA_TYPE_JSON))
-            .build()
-        val response = client.newCall(request).execute()
-        if (!response.isSuccessful) {
-            throw IOException("Unexpected code ${response.code}")
-        }
-        val gigaChatResponse = JSON.parse<GigaChatResponse>(response.body!!.string())
-        emit(gigaChatResponse)
-    }.flowOn(Dispatchers.IO)
+            val request = Request.Builder()
+                .url(URL_GIGA_CHAT_COMPLETION)
+                .header("Authorization", "Bearer $bearerToken")
+                .header("Accept", "application/json")
+                .header("Content-Type", "application/json")
+                .post(JSON.stringify(gigaReq).toRequestBody(MEDIA_TYPE_JSON))
+                .build()
+
+            val response = client.newCall(request).execute()
+            if (!response.isSuccessful) {
+                throw IOException("Unexpected code ${response.code}")
+            }
+
+            val responseBody = response.body
+            if (responseBody != null) {
+                // поменять дата класс под стриминг
+                // вроде строка сюда не будет меняться и это неправильный код
+                val gigaChatResponse = JSON.parse(responseBody.string(), GigaChatResponse::class.java)
+                emit(gigaChatResponse)
+            }
+        }.flowOn(Dispatchers.IO)
+    }
+
+
 }
+
 
