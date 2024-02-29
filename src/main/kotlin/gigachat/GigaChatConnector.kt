@@ -1,12 +1,13 @@
 package gigachat
 
 import com.mlp.sdk.utils.JSON
+import com.mlp.sdk.utils.JSON.asJson
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.channels.awaitClose
-import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.withContext
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.io.BufferedReader
 import java.io.FileInputStream
 import java.io.IOException
 import java.security.KeyStore
@@ -23,6 +24,7 @@ private const val URL_GIGA_CHAT_COMPLETION = "https://gigachat.devices.sberbank.
 private val MEDIA_TYPE_JSON = "application/json".toMediaType()
 private const val TOKEN_EXPIRATION_DURATION = 30 * 60 * 1000
 var CERT_PATH = ""
+
 
 /*
  * Дата классы запроса в GigaChat
@@ -45,7 +47,7 @@ data class GigaChatMessage(
 )
 
 /*
- * Дата классы ответа от GigaChat
+ * Дата классы ответа от GigaChat синхронные (stream = false)
  */
 data class GigaChatResponse(
     val choices: List<Choice>,
@@ -55,11 +57,13 @@ data class GigaChatResponse(
     val `object`: String
 )
 
+
 data class Choice(
     val message: Message,
     val index: Int,
     val finish_reason: String
 )
+
 
 data class Message(
     val role: String,
@@ -71,6 +75,27 @@ data class Usage(
     val completion_tokens: Int,
     val total_tokens: Int,
     val system_tokens: Int
+)
+
+/*
+ * Дата классы запроса в GigaChat асинхронные (stream=true)
+ */
+data class GigaChatResponseAsync(
+    val choices: List<Choices>,
+    val created: Long,
+    val model: String,
+    val `object`: String
+
+)
+
+data class Delta(
+    val content: String,
+    val role: String?
+)
+
+data class Choices(
+    val delta: Delta,
+    val index: Int
 )
 
 
@@ -164,10 +189,14 @@ class GigaChatConnector(val initConfig: InitConfig) {
         return client
     }
 
-    fun sendMessageToGigaChatAsync(gigaReq: GigaChatRequest): Flow<GigaChatResponse> {
-        return flow {
-            updateBearerToken()
+    suspend fun sendMessageToGigaChatAsync(
+        gigaReq: GigaChatRequest,
+        callback: (GigaChatResponseAsync) -> Unit // Callback для передачи результата
+    ) {
+        updateBearerToken()
 
+        // Используем withContext для выполнения в IO контексте
+        withContext(Dispatchers.IO) {
             val client = configureSSLClient()
 
             val request = Request.Builder()
@@ -178,22 +207,37 @@ class GigaChatConnector(val initConfig: InitConfig) {
                 .post(JSON.stringify(gigaReq).toRequestBody(MEDIA_TYPE_JSON))
                 .build()
 
-            val response = client.newCall(request).execute()
-            if (!response.isSuccessful) {
-                throw IOException("Unexpected code ${response.code}")
-            }
+            try {
+                client.newCall(request).enqueue(object : Callback {
+                    override fun onFailure(call: Call, e: IOException) {
+                        // При возникновении ошибки вызываем callback с пустым результатом
+                        callback.invoke(GigaChatResponseAsync(emptyList(), 0, "", ""))
+                    }
 
-            val responseBody = response.body
-            if (responseBody != null) {
-                // поменять дата класс под стриминг
-                // вроде строка сюда не будет меняться и это неправильный код
-                val gigaChatResponse = JSON.parse(responseBody.string(), GigaChatResponse::class.java)
-                emit(gigaChatResponse)
+                    override fun onResponse(call: Call, response: Response) {
+                        val reader = BufferedReader(response.body!!.charStream())
+                        var line: String?
+                        while (reader.readLine().also { line = it } != null) {
+                            if (line!!.isNotEmpty() && !line.equals("data: [DONE]")) { // Проверка на непустую строку
+                                val cleanResponseBody = line!!.replace("data:", "")
+                                val result = JSON.parse(cleanResponseBody, GigaChatResponseAsync::class.java)
+                                println("______________________")
+                                // Передаем результат в callback
+                                println()
+                                println(result)
+                                println()
+                                println("______________________")
+
+                                callback.invoke(result)
+                            }
+                        }
+                    }
+
+                })
+            } catch (e: Exception) {
+                // Обработка исключений при выполнении запроса
+                callback.invoke(GigaChatResponseAsync(emptyList(), 0, "", ""))
             }
-        }.flowOn(Dispatchers.IO)
+        }
     }
-
-
 }
-
-

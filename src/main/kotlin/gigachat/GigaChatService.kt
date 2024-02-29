@@ -1,14 +1,9 @@
 package gigachat
 
-import com.google.protobuf.ByteString
 import com.mlp.gate.*
 import com.mlp.sdk.*
 import com.mlp.sdk.datatypes.chatgpt.*
-import com.mlp.sdk.datatypes.tts.TtsConfig
-import com.mlp.sdk.datatypes.tts.TtsRequest
 import com.mlp.sdk.utils.JSON
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.runBlocking
 import kotlin.io.path.Path
@@ -44,7 +39,7 @@ data class PredictConfig(
 
 class GigaChatService(
     override val context: MlpExecutionContext,
-    private val client: MlpClientSDK
+//    private val client: MlpClientSDK
 ) :
     MlpPredictWithConfigServiceBase<ChatCompletionRequest, PredictConfig, ChatCompletionResult>
         (REQUEST_EXAMPLE, PREDICT_CONFIG_EXAMPLE, RESPONSE_EXAMPLE) {
@@ -81,7 +76,7 @@ class GigaChatService(
             temperature = request.temperature ?: config?.temperature ?: defaultPredictConfig.temperature,
             top_p = request.topP ?: config?.top_p ?: defaultPredictConfig.top_p,
             n = request.n ?: config?.n ?: defaultPredictConfig.n,
-            stream = defaultPredictConfig.stream,
+            stream = request.stream ?: defaultPredictConfig.stream,
             maxTokens = request.maxTokens ?: config?.maxTokens ?: defaultPredictConfig.maxTokens,
             repetition_penalty = request.frequencyPenalty ?: config?.repetition_penalty
             ?: defaultPredictConfig.repetition_penalty,
@@ -102,52 +97,50 @@ class GigaChatService(
 
 
         runBlocking {
-//            sendMessageToGigaChatAsync(gigaChatRequest).collect { gigaChatResponse ->
-                // Отправка каждого ответа в веб-сервис
-                val choices = gigaChatResponse.choices.map {
-                    ChatCompletionChoice(
-                        message = ChatMessage(
-                            role = ChatCompletionRole.assistant,
-                            content = it.message.content
-                        ),
-                        index = it.index,
-                        finishReason = ChatCompletionChoiceFinishReason.stop
-                    )
-                }
+            connector.sendMessageToGigaChatAsync(gigaChatRequest) { gigaChatResponse ->
+                println("==========ЭТО МЭЙН ПРЕДИКТ========")
+                println()
+                println(gigaChatResponse)
+                println()
+                println("==========ЭТО МЭЙН ПРЕДИКТ========")
+                // Обработка полученного ответа
+                // Например, передача данных веб-сервису
+//                val choices = gigaChatResponse.choices.map {
+//                    ChatCompletionChoice(
+//                        message = ChatMessage(
+//                            role = ChatCompletionRole.assistant,
+//                            content = it.delta.content
+//                        ),
+//                        index = it.index,
+//                        finishReason = ChatCompletionChoiceFinishReason.stop
+//                    )
+//                }
+//
+//                val response = ChatCompletionResult(
+//                    id = null,
+//                    `object` = gigaChatResponse.`object`,
+//                    created = gigaChatResponse.created,
+//                    model = gigaChatResponse.model,
+//                    choices = choices,
+//                )
 
-                val response = ChatCompletionResult(
-                    id = null,
-                    `object` = gigaChatResponse.`object`,
-                    created = gigaChatResponse.created,
-                    model = gigaChatResponse.model,
-                    choices = choices,
-                )
 
-                val partitionProto = createResponseProto(response)
-                client.sendRequest(partitionProto)
+//            val partitionProto = createResponseProto(response)
+//            client.sendRequest(partitionProto)
             }
         }
-        return
-    }
+                return ChatCompletionResult(
+            id = null,
+            `object` = null,
+            model = "Some",
+            choices = listOf(),
 
-    private fun createResponseProto(data: ByteString, first: Boolean, last: Boolean, cost: Long): ServiceToGateProto {
-        return ServiceToGateProto.newBuilder()
-            .setRequestId(requestId)
-            .setPartialPredict(
-                PartialPredictResponseProto.newBuilder()
-                    .setData(
-                        PayloadProto.newBuilder()
-                            .setDataType("protobuf/bytes")
-                            .setProtobuf(data)
-                    )
-                    .setStart(first)
-                    .setFinish(last)
-            )
-            .putHeaders("Z-custom-billing", cost.toString())
-            .build()
+        )
     }
 
 
+
+//
 //        val resultResponse = connector.sendMessageToGigaChat(gigaChatRequest)
 //
 //        val totalTokens = (resultResponse.usage.total_tokens).toLong()
@@ -171,7 +164,7 @@ class GigaChatService(
 //            completionTokens = resultResponse.usage.completion_tokens.toLong(),
 //            totalTokens = resultResponse.usage.total_tokens.toLong(),
 //        )
-//
+
 //        return ChatCompletionResult(
 //            id = null,
 //            `object` = resultResponse.`object`,
@@ -180,6 +173,23 @@ class GigaChatService(
 //            choices = choices,
 //            usage = usage
 //        )
+//    }
+
+//    private fun createResponseProto(data: ByteString, first: Boolean, last: Boolean, cost: Long): ServiceToGateProto {
+//        return ServiceToGateProto.newBuilder()
+//            .setRequestId(requestId)
+//            .setPartialPredict(
+//                PartialPredictResponseProto.newBuilder()
+//                    .setData(
+//                        PayloadProto.newBuilder()
+//                            .setDataType("protobuf/bytes")
+//                            .setProtobuf(data)
+//                    )
+//                    .setStart(first)
+//                    .setFinish(last)
+//            )
+//            .putHeaders("Z-custom-billing", cost.toString())
+//            .build()
 //    }
 
     companion object {
@@ -210,6 +220,7 @@ class GigaChatService(
     }
 }
 
+
 fun main() {
     val currentDir = System.getProperty("user.dir")
     CERT_PATH = Path("$currentDir/cert/russiantrustedca.pem").toString()
@@ -218,4 +229,9 @@ fun main() {
 
     actionSDK.start()
     actionSDK.blockUntilShutdown()
+    // В вашем коде, где нужно отправить запрос:
+
+
+
+
 }
