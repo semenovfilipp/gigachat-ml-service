@@ -191,11 +191,10 @@ class GigaChatConnector(val initConfig: InitConfig) {
 
     suspend fun sendMessageToGigaChatAsync(
         gigaReq: GigaChatRequest,
-        callback: (GigaChatResponseAsync) -> Unit // Callback для передачи результата
+        callback: (GigaChatResponseAsync) -> Unit
     ) {
         updateBearerToken()
 
-        // Используем withContext для выполнения в IO контексте
         withContext(Dispatchers.IO) {
             val client = configureSSLClient()
 
@@ -210,7 +209,6 @@ class GigaChatConnector(val initConfig: InitConfig) {
             try {
                 client.newCall(request).enqueue(object : Callback {
                     override fun onFailure(call: Call, e: IOException) {
-                        // При возникновении ошибки вызываем callback с пустым результатом
                         callback.invoke(GigaChatResponseAsync(emptyList(), 0, "", ""))
                     }
 
@@ -218,11 +216,10 @@ class GigaChatConnector(val initConfig: InitConfig) {
                         val reader = BufferedReader(response.body!!.charStream())
                         var line: String?
                         while (reader.readLine().also { line = it } != null) {
-                            if (line!!.isNotEmpty() && !line.equals("data: [DONE]")) { // Проверка на непустую строку
+                            if (line!!.isNotEmpty() && !line.equals("data: [DONE]")) {
                                 val cleanResponseBody = line!!.replace("data:", "")
                                 val result = JSON.parse(cleanResponseBody, GigaChatResponseAsync::class.java)
                                 println("______________________")
-                                // Передаем результат в callback
                                 println()
                                 println(result)
                                 println()
@@ -235,7 +232,6 @@ class GigaChatConnector(val initConfig: InitConfig) {
 
                 })
             } catch (e: Exception) {
-                // Обработка исключений при выполнении запроса
                 callback.invoke(GigaChatResponseAsync(emptyList(), 0, "", ""))
             }
         }

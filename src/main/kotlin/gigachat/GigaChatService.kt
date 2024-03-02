@@ -1,5 +1,6 @@
 package gigachat
 
+import com.google.protobuf.ByteString
 import com.mlp.gate.*
 import com.mlp.sdk.*
 import com.mlp.sdk.datatypes.chatgpt.*
@@ -7,6 +8,7 @@ import com.mlp.sdk.utils.JSON
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.slf4j.MDCContext
+import org.slf4j.MDC
 import java.util.concurrent.Executors
 import kotlin.io.path.Path
 
@@ -39,54 +41,75 @@ data class PredictConfig(
 )
 
 
-class GigaChatService(
-    override val context: MlpExecutionContext,
-    private val client: MlpClientSDK
-) : MlpService() {
+class GigaChatService() : MlpService() {
 
     private val initConfig = JSON.parse(System.getenv()["SERVICE_CONFIG"] ?: "{}", InitConfig::class.java)
     private val defaultPredictConfig = PredictConfig()
-
     private val connector = GigaChatConnector(initConfig)
 
     private val dispatcher = Executors.newCachedThreadPool().asCoroutineDispatcher()
+    private val connectorId = MDC.get("connectorId").toLong()
+    private val requestId = MDC.get("gateRequestId").toLong()
+
+    var firstMessage: Boolean = true
+    var lastMessage: Boolean = false
+
+    lateinit var sdk: MlpServiceSDK
 
 
-    override fun predict(request: Payload, config: Payload?): MlpResponse {
-        val responseWrapper = runBlocking(dispatcher + MDCContext()) {
-            {
-                doPredict(request, config)
-            }
-        }
-        BillingUnitsThreadLocal.setUnits(responseWrapper.customBilling)
-        return responseWrapper.response
-    }
-
-    private suspend fun doPredict(req: Payload, conf: Payload?): MlpResponseBillingWrapper {
-        val request = req.data.parse<ChatCompletionRequest>()
-        val config = conf?.data?.parseOrNull<PredictConfig>()
+    override fun predict(req: Payload, conf: Payload?): MlpPartialBinaryResponse {
+        val request = JSON.parse(req.data, ChatCompletionRequest::class.java)
+        val config = conf?.data?.let { JSON.parse(it, PredictConfig::class.java) }
         val gigaChatRequest = createGigaChatRequest(request, config)
 
-
-
-
-
         runBlocking {
-            connector.sendMessageToGigaChatAsync(gigaChatRequest) { gigaChatResponse ->
-                println("==========ЭТО МЭЙН ПРЕДИКТ========")
-                println()
-                println(gigaChatResponse)
-                println()
-                println("==========ЭТО МЭЙН ПРЕДИКТ========")
-                // Обработка полученного ответа
-                // Например, передача данных веб-сервису
-                createChatCompletionResponseAsync(gigaChatResponse)
-                val resultResponse = connector.sendMessageToGigaChat(gigaChatRequest)
+            launch {
+                // отправляем запрос в гигачат
+                // получаем ответ
+                // упаковываем ответ в createResponseProto
+                // отправляем ответ через sdk
+                connector.sendMessageToGigaChatAsync(gigaChatRequest) { gigaChatResponse ->
+                    launch {
+                        val partitionProto = createPartialResponse(gigaChatResponse)
+                        sdk.send(connectorId, partitionProto)
+                    }
+                }
             }
         }
+        return MlpPartialBinaryResponse()
     }
 
-    private fun createChatCompletionResponseAsync(gigaChatResponse: GigaChatResponseAsync) : ChatCompletionResponse {
+
+//        val responseWrapper = runBlocking(dispatcher + MDCContext()) {
+//            {
+//                doPredict(req, conf)
+//            }
+//        }
+//        BillingUnitsThreadLocal.setUnits(responseWrapper.customBilling)
+//        return responseWrapper.response
+
+
+    fun createPartialResponse(response: Any): ServiceToGateProto {
+        return ServiceToGateProto.newBuilder()
+            // сюда надо поставить requestId тот же что и был в запросе
+            // достать его можно только из MDC
+            .setRequestId(requestId)
+            .setPartialPredict(
+                PartialPredictResponseProto.newBuilder()
+                    .setStart(false) // сдесь должны быть корректные значения особенно для finish
+                    .setFinish(false)
+                    .setData(
+                        PayloadProto.newBuilder()
+                            .setJson(JSON.stringify(response)) // тело ответа в JSON
+                            .setDataType("json") // поле на будущее, сейчас смысла не несет
+                    )
+            )
+            .putHeaders("Z-custom-billing", "priceInNanoToken")
+            .build()
+    }
+
+
+    private fun createChatCompletionResponseAsync(gigaChatResponse: GigaChatResponseAsync): ChatCompletionResult {
         val choices = gigaChatResponse.choices.map {
             ChatCompletionChoice(
                 message = ChatMessage(
@@ -135,103 +158,73 @@ class GigaChatService(
     }
 
 
-
-
-private fun createGigaChatRequest(
-    request: ChatCompletionRequest,
-    config: PredictConfig?
-): GigaChatRequest {
-    val messages = mutableListOf<GigaChatMessage>()
-    if (request.messages.find { it.role == ChatCompletionRole.system } == null) {
-        config?.systemPrompt?.let { systemPrompt ->
+    private fun createGigaChatRequest(
+        request: ChatCompletionRequest,
+        config: PredictConfig?
+    ): GigaChatRequest {
+        val messages = mutableListOf<GigaChatMessage>()
+        if (request.messages.find { it.role == ChatCompletionRole.system } == null) {
+            config?.systemPrompt?.let { systemPrompt ->
+                messages.add(
+                    GigaChatMessage(
+                        role = "system",
+                        content = systemPrompt
+                    )
+                )
+            }
+        }
+        request.messages.forEach { message ->
             messages.add(
                 GigaChatMessage(
-                    role = "system",
-                    content = systemPrompt
+                    role = message.role.toString(),
+                    content = message.content
                 )
             )
         }
+
+        val gigaChatRequest = GigaChatRequest(
+            model = request.model ?: config?.model ?: defaultPredictConfig.model,
+            messages = messages,
+            temperature = request.temperature ?: config?.temperature ?: defaultPredictConfig.temperature,
+            top_p = request.topP ?: config?.top_p ?: defaultPredictConfig.top_p,
+            n = request.n ?: config?.n ?: defaultPredictConfig.n,
+            stream = request.stream ?: config?.stream ?: defaultPredictConfig.stream,
+            maxTokens = request.maxTokens ?: config?.maxTokens ?: defaultPredictConfig.maxTokens,
+            repetition_penalty = request.frequencyPenalty ?: config?.repetition_penalty
+            ?: defaultPredictConfig.repetition_penalty,
+            update_interval = request.presencePenalty?.toInt() ?: config?.update_interval
+            ?: defaultPredictConfig.update_interval
+        )
+        return gigaChatRequest
     }
-    request.messages.forEach { message ->
-        messages.add(
-            GigaChatMessage(
-                role = message.role.toString(),
-                content = message.content
+
+
+    companion object {
+        val REQUEST_EXAMPLE = ChatCompletionRequest(
+            messages = listOf(
+                ChatMessage(ChatCompletionRole.user, "Hello")
+
             )
         )
-    }
-
-    val gigaChatRequest = GigaChatRequest(
-        model = request.model ?: config?.model ?: defaultPredictConfig.model,
-        messages = messages,
-        temperature = request.temperature ?: config?.temperature ?: defaultPredictConfig.temperature,
-        top_p = request.topP ?: config?.top_p ?: defaultPredictConfig.top_p,
-        n = request.n ?: config?.n ?: defaultPredictConfig.n,
-        stream = request.stream ?: config?.stream ?: defaultPredictConfig.stream,
-        maxTokens = request.maxTokens ?: config?.maxTokens ?: defaultPredictConfig.maxTokens,
-        repetition_penalty = request.frequencyPenalty ?: config?.repetition_penalty
-        ?: defaultPredictConfig.repetition_penalty,
-        update_interval = request.presencePenalty?.toInt() ?: config?.update_interval
-        ?: defaultPredictConfig.update_interval
-    )
-    return gigaChatRequest
-}
-
-
-//
-//        val resultResponse = connector.sendMessageToGigaChat(gigaChatRequest)
-//
-//        val totalTokens = (resultResponse.usage.total_tokens).toLong()
-//        val totalCost = (((totalTokens * 0.2 / 1000.0) * 100).toLong() / 100.0)
-//
-//        BillingUnitsThreadLocal.setUnits(totalCost.toLong())
-//
-//
-/
-//    private fun createResponseProto(data: ByteString, first: Boolean, last: Boolean, cost: Long): ServiceToGateProto {
-//        return ServiceToGateProto.newBuilder()
-//            .setRequestId(requestId)
-//            .setPartialPredict(
-//                PartialPredictResponseProto.newBuilder()
-//                    .setData(
-//                        PayloadProto.newBuilder()
-//                            .setDataType("protobuf/bytes")
-//                            .setProtobuf(data)
-//                    )
-//                    .setStart(first)
-//                    .setFinish(last)
-//            )
-//            .putHeaders("Z-custom-billing", cost.toString())
-//            .build()
-//    }
-
-
-companion object {
-    val REQUEST_EXAMPLE = ChatCompletionRequest(
-        messages = listOf(
-            ChatMessage(ChatCompletionRole.user, "Hello")
-
+        val RESPONSE_EXAMPLE = ChatCompletionResult(
+            model = "GigaChat",
+            choices = listOf(
+                ChatCompletionChoice(
+                    message = ChatMessage(
+                        role = ChatCompletionRole.assistant,
+                        content = "Hll"
+                    ),
+                    index = 11
+                )
+            ),
         )
-    )
-    val RESPONSE_EXAMPLE = ChatCompletionResult(
-        model = "GigaChat",
-        choices = listOf(
-            ChatCompletionChoice(
-                message = ChatMessage(
-                    role = ChatCompletionRole.assistant,
-                    content = "Hll"
-                ),
-                index = 11
-            )
-        ),
-    )
-    val PREDICT_CONFIG_EXAMPLE = PredictConfig(
-        systemPrompt = "Верни ответ без гласных",
-        maxTokens = 2000,
-        temperature = 0.7,
-        stream = false,
-    )
-}
+        val PREDICT_CONFIG_EXAMPLE = PredictConfig(
+            systemPrompt = "Верни ответ без гласных",
+            maxTokens = 2000,
+            temperature = 0.7,
+            stream = false,
+        )
+    }
 }
 
 
@@ -239,10 +232,15 @@ fun main() {
     val currentDir = System.getProperty("user.dir")
     CERT_PATH = Path("$currentDir/cert/russiantrustedca.pem").toString()
 
-    val actionSDK = MlpServiceSDK({ GigaChatService(MlpExecutionContext.systemContext) })
 
-    actionSDK.start()
-    actionSDK.blockUntilShutdown()
+    val service = GigaChatService()
+    val mlp = MlpServiceSDK(service)
+    service.sdk = mlp
+
+
+
+    mlp.start()
+    mlp.blockUntilShutdown()
 }
 /*
  * Итоговый подсчет
