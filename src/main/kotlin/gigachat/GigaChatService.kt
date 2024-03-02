@@ -62,21 +62,29 @@ class GigaChatService() : MlpService() {
         val gigaChatRequest = createGigaChatRequest(request, config)
 
         runBlocking {
-            launch {
-                // отправляем запрос в гигачат
-                // получаем ответ
-                // упаковываем ответ в createResponseProto
-                // отправляем ответ через sdk
-                connector.sendMessageToGigaChatAsync(gigaChatRequest) { gigaChatResponse ->
-                    launch {
-                        val partitionProto = createPartialResponse(gigaChatResponse)
-                        sdk.send(MDC.get("connectorId").toLong(), partitionProto)
-                    }
+            connector.sendMessageToGigaChatAsync(gigaChatRequest) { gigaChatReponse ->
+                println()
+                println("__________________________")
+                println(gigaChatReponse)
+                println("__________________________")
+                println()
+                val partitionProto = createPartialResponse(gigaChatReponse)
+                println()
+                println("__________________________")
+                println(partitionProto)
+                println("__________________________")
+                println()
+                launch {
+                    //  MDC.get("connectorId").toLong()
+                    sdk.send(MDC.get("connectorId").toLong(), partitionProto)
                 }
             }
         }
         return MlpPartialBinaryResponse()
     }
+
+
+
 
 
 //        val responseWrapper = runBlocking(dispatcher + MDCContext()) {
@@ -92,7 +100,8 @@ class GigaChatService() : MlpService() {
         return ServiceToGateProto.newBuilder()
             // сюда надо поставить requestId тот же что и был в запросе
             // достать его можно только из MDC
-            .setRequestId(MDC.get("gateRequestId").toLong())
+                // MDC.get("gateRequestId").toLong()
+//            .setRequestId("requestID".toLong())
             .setPartialPredict(
                 PartialPredictResponseProto.newBuilder()
                     .setStart(false) // сдесь должны быть корректные значения особенно для finish
@@ -224,6 +233,7 @@ class GigaChatService() : MlpService() {
             stream = false,
         )
     }
+
     override fun getDescriptor(): ServiceDescriptorProto {
 
         return ServiceDescriptorProto.newBuilder()
@@ -231,8 +241,6 @@ class GigaChatService() : MlpService() {
             .build()
     }
 }
-
-
 
 
 fun main() {
