@@ -48,8 +48,7 @@ class GigaChatService() : MlpService() {
     private val connector = GigaChatConnector(initConfig)
 
     private val dispatcher = Executors.newCachedThreadPool().asCoroutineDispatcher()
-    private val connectorId = MDC.get("connectorId").toLong()
-    private val requestId = MDC.get("gateRequestId").toLong()
+
 
     var firstMessage: Boolean = true
     var lastMessage: Boolean = false
@@ -71,7 +70,7 @@ class GigaChatService() : MlpService() {
                 connector.sendMessageToGigaChatAsync(gigaChatRequest) { gigaChatResponse ->
                     launch {
                         val partitionProto = createPartialResponse(gigaChatResponse)
-                        sdk.send(connectorId, partitionProto)
+                        sdk.send(MDC.get("connectorId").toLong(), partitionProto)
                     }
                 }
             }
@@ -93,7 +92,7 @@ class GigaChatService() : MlpService() {
         return ServiceToGateProto.newBuilder()
             // сюда надо поставить requestId тот же что и был в запросе
             // достать его можно только из MDC
-            .setRequestId(requestId)
+            .setRequestId(MDC.get("gateRequestId").toLong())
             .setPartialPredict(
                 PartialPredictResponseProto.newBuilder()
                     .setStart(false) // сдесь должны быть корректные значения особенно для finish
@@ -225,7 +224,15 @@ class GigaChatService() : MlpService() {
             stream = false,
         )
     }
+    override fun getDescriptor(): ServiceDescriptorProto {
+
+        return ServiceDescriptorProto.newBuilder()
+            .setName("GigaChat")
+            .build()
+    }
 }
+
+
 
 
 fun main() {
