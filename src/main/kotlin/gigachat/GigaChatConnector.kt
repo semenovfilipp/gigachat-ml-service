@@ -11,7 +11,7 @@ import java.io.FileInputStream
 import java.io.IOException
 import java.security.KeyStore
 import java.security.cert.CertificateFactory
-import java.util.UUID
+import java.util.*
 import javax.net.ssl.SSLContext
 import javax.net.ssl.TrustManagerFactory
 import javax.net.ssl.X509TrustManager
@@ -128,6 +128,7 @@ class GigaChatConnector(val initConfig: InitConfig) {
         return JSON.parse(response.body!!.string(), GigaChatResponse::class.java)
     }
 
+
     /*
      * Обновление BearerToken
      */
@@ -185,12 +186,17 @@ class GigaChatConnector(val initConfig: InitConfig) {
             init(null, trustManagerFactory.trustManagers, null)
         }
 
-        val client = OkHttpClient.Builder()
+        return OkHttpClient.Builder()
             .sslSocketFactory(sslContext.socketFactory, trustManagerFactory.trustManagers.first() as X509TrustManager)
             .build()
-        return client
     }
 
+
+    /*
+     * Отправление запроса на сервер GigaChat
+     * Получение потокового ответа
+     * Далее перенаправление в predict метод для обработки
+     */
     suspend fun sendMessageToGigaChatAsync(
         gigaReq: GigaChatRequest,
         callback: (GigaChatResponseAsync) -> Unit
@@ -227,14 +233,14 @@ class GigaChatConnector(val initConfig: InitConfig) {
                                     count++
                                     callback.invoke(result)
 
-                                } else if (line!!.equals("data: [DONE]")) {
+                                } else if (line!! == "data: [DONE]") {
                                     val emptyResponse = GigaChatResponseAsync(emptyList(), 0, "", "")
                                     isLastMessage = true
                                     callback.invoke(emptyResponse)
                                 }
                             }
                         } catch (e: IOException) {
-                            throw  e
+                            throw e
 
                         } finally {
                             try {

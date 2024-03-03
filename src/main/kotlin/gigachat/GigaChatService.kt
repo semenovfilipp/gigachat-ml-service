@@ -1,25 +1,17 @@
 package gigachat
 
-import com.fasterxml.jackson.databind.ObjectMapper
 import com.mlp.gate.PartialPredictResponseProto
 import com.mlp.gate.PayloadProto
 import com.mlp.gate.ServiceDescriptorProto
 import com.mlp.gate.ServiceToGateProto
-import com.mlp.sdk.MlpPartialBinaryResponse
-import com.mlp.sdk.MlpService
-import com.mlp.sdk.MlpServiceSDK
-import com.mlp.sdk.Payload
+import com.mlp.sdk.*
 import com.mlp.sdk.datatypes.chatgpt.*
 import com.mlp.sdk.datatypes.chatgpt.Usage
 import com.mlp.sdk.utils.JSON
-import kotlinx.coroutines.asCoroutineDispatcher
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.*
 import org.slf4j.MDC
 import kotlin.io.path.Path
-import java.util.concurrent.Executors
-
-
+import kotlinx.coroutines.*
 
 
 /*
@@ -38,8 +30,8 @@ data class InitConfig(
 data class PredictConfig(
     val systemPrompt: String? = null,
 
-    val model: String = "GigaChat",
     // GigaChat, GigaChat:latest, GigaChat-Plus, GigaChat-Pro
+    val model: String = "GigaChat",
 
     val temperature: Double = 1.0,
     val top_p: Double = 0.1,
@@ -57,11 +49,10 @@ class GigaChatService : MlpService() {
     private val defaultPredictConfig = PredictConfig()
     private val connector = GigaChatConnector(initConfig)
 
-    private val dispatcher = Executors.newCachedThreadPool().asCoroutineDispatcher()
-
     lateinit var sdk: MlpServiceSDK
-    var connectorId: Long? = null
-    var requestId: Long? = null
+    private var connectorId: Long? = null
+    private var requestId: Long? = null
+    private var priceInNanoTokens: Long = 0L
 
 
     override fun predict(req: Payload, conf: Payload?): MlpPartialBinaryResponse {
@@ -72,6 +63,14 @@ class GigaChatService : MlpService() {
         requestId = MDC.get("gateRequestId").toLong()
         connectorId = MDC.get("connectorId").toLong()
 
+        return if (gigaChatRequest.stream) {
+            predictAsync(gigaChatRequest)
+        } else {
+            predictSync(gigaChatRequest)
+        }
+    }
+
+    private fun predictAsync(gigaChatRequest: GigaChatRequest): MlpPartialBinaryResponse {
         runBlocking {
             connector.sendMessageToGigaChatAsync(gigaChatRequest) { gigaChatReponse ->
                 val chatCompletionResponse = createChatCompletionResponseAsync(gigaChatReponse)
@@ -92,13 +91,42 @@ class GigaChatService : MlpService() {
     }
 
 
-//        val responseWrapper = runBlocking(dispatcher + MDCContext()) {
-//            {
-//                doPredict(req, conf)
-//            }
-//        }
-//        BillingUnitsThreadLocal.setUnits(responseWrapper.customBilling)
-//        return responseWrapper.response
+    private fun predictSync(gigaChatRequest: GigaChatRequest): MlpPartialBinaryResponse {
+        val gigaChatResponse = connector.sendMessageToGigaChat(gigaChatRequest)
+        calculateCost(gigaChatRequest, gigaChatResponse)
+
+        val chatCompletionResponse = createChatCompletionResponse(gigaChatResponse)
+        isLastMessage = true
+        val partitionProto = createPartialResponse(chatCompletionResponse)
+        isLastMessage = false
+
+        println()
+        println("__________________________")
+        println(partitionProto)
+        println("__________________________")
+        println()
+
+        GlobalScope.launch {
+            sdk.send(connectorId!!, partitionProto)
+        }
+
+        BillingUnitsThreadLocal.setUnits(priceInNanoTokens)
+        return MlpPartialBinaryResponse()
+    }
+
+
+    /*
+     * Подсчет итоговой стоимости
+     * Работает только для синхронного запроса
+     */
+    fun calculateCost(request: GigaChatRequest, response: GigaChatResponse) {
+        /*GigaChat Lite = 200*/
+        /*GigaChat Pro = 1500*/
+        val priceRubPerMillion = if (request.model == "GigaChat-Pro") 1500 else 200
+        val totalTokens = (response.usage.total_tokens).toLong()
+        val priceInMicroRoubles = totalTokens * priceRubPerMillion
+        priceInNanoTokens = priceInMicroRoubles * 50 * 1000
+    }
 
 
     fun createPartialResponse(response: Any): ServiceToGateProto {
@@ -119,7 +147,9 @@ class GigaChatService : MlpService() {
             .build()
     }
 
-
+    /*
+    * Преобразователи из GigaChatResponse в ChatCompletionResult
+    */
     private fun createChatCompletionResponseAsync(gigaChatResponse: GigaChatResponseAsync): ChatCompletionResult {
         val choices = gigaChatResponse.choices.map {
             ChatCompletionChoice(
@@ -169,6 +199,9 @@ class GigaChatService : MlpService() {
     }
 
 
+    /*
+     * Создание запроса для GigaChat
+     */
     private fun createGigaChatRequest(
         request: ChatCompletionRequest,
         config: PredictConfig?
@@ -193,7 +226,7 @@ class GigaChatService : MlpService() {
             )
         }
 
-        val gigaChatRequest = GigaChatRequest(
+        return GigaChatRequest(
             model = request.model ?: config?.model ?: defaultPredictConfig.model,
             messages = messages,
             temperature = request.temperature ?: config?.temperature ?: defaultPredictConfig.temperature,
@@ -206,37 +239,12 @@ class GigaChatService : MlpService() {
             update_interval = request.presencePenalty?.toInt() ?: config?.update_interval
             ?: defaultPredictConfig.update_interval
         )
-        return gigaChatRequest
     }
 
 
-    companion object {
-        val REQUEST_EXAMPLE = ChatCompletionRequest(
-            messages = listOf(
-                ChatMessage(ChatCompletionRole.user, "Hello")
-
-            )
-        )
-        val RESPONSE_EXAMPLE = ChatCompletionResult(
-            model = "GigaChat",
-            choices = listOf(
-                ChatCompletionChoice(
-                    message = ChatMessage(
-                        role = ChatCompletionRole.assistant,
-                        content = "Hll"
-                    ),
-                    index = 11
-                )
-            ),
-        )
-        val PREDICT_CONFIG_EXAMPLE = PredictConfig(
-            systemPrompt = "Верни ответ без гласных",
-            maxTokens = 2000,
-            temperature = 0.7,
-            stream = false,
-        )
-    }
-
+    /*
+     * Необходим для успешного запуска приложения
+     */
     override fun getDescriptor(): ServiceDescriptorProto {
 
         return ServiceDescriptorProto.newBuilder()
@@ -250,27 +258,10 @@ fun main() {
     val currentDir = System.getProperty("user.dir")
     CERT_PATH = Path("$currentDir/cert/russiantrustedca.pem").toString()
 
-
     val service = GigaChatService()
     val mlp = MlpServiceSDK(service)
     service.sdk = mlp
 
-
-
     mlp.start()
     mlp.blockUntilShutdown()
 }
-/*
- * Итоговый подсчет
- */
-//
-//        val priceRubPerMillion =
-//                    if (request.model == "GigaChat-Pro") 1500       /*GigaChat Lite*/
-//                    else 200                                        /*GigaChat Pro*/
-//
-//        val totalTokens = (resultResponse.usage.total_tokens).toLong()
-//
-//        val priceInMicroRoubles = totalTokens * priceRubPerMillion
-//        val priceInNanoTokens = priceInMicroRoubles * 50 * 1000
-//
-//        BillingUnitsThreadLocal.setUnits(priceInNanoTokens)
