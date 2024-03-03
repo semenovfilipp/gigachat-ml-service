@@ -1,16 +1,26 @@
 package gigachat
 
-import com.google.protobuf.ByteString
-import com.mlp.gate.*
-import com.mlp.sdk.*
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.mlp.gate.PartialPredictResponseProto
+import com.mlp.gate.PayloadProto
+import com.mlp.gate.ServiceDescriptorProto
+import com.mlp.gate.ServiceToGateProto
+import com.mlp.sdk.MlpPartialBinaryResponse
+import com.mlp.sdk.MlpService
+import com.mlp.sdk.MlpServiceSDK
+import com.mlp.sdk.Payload
 import com.mlp.sdk.datatypes.chatgpt.*
+import com.mlp.sdk.datatypes.chatgpt.Usage
 import com.mlp.sdk.utils.JSON
-import kotlinx.coroutines.*
-import kotlinx.coroutines.flow.*
-import kotlinx.coroutines.slf4j.MDCContext
+import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import org.slf4j.MDC
-import java.util.concurrent.Executors
 import kotlin.io.path.Path
+import java.util.concurrent.Executors
+
+
+
 
 /*
  * Сервисные конфигурации для доступа к GigaChat
@@ -41,7 +51,7 @@ data class PredictConfig(
 )
 
 
-class GigaChatService() : MlpService() {
+class GigaChatService : MlpService() {
 
     private val initConfig = JSON.parse(System.getenv()["SERVICE_CONFIG"] ?: "{}", InitConfig::class.java)
     private val defaultPredictConfig = PredictConfig()
@@ -49,11 +59,9 @@ class GigaChatService() : MlpService() {
 
     private val dispatcher = Executors.newCachedThreadPool().asCoroutineDispatcher()
 
-
-    var firstMessage: Boolean = true
-    var lastMessage: Boolean = false
-
     lateinit var sdk: MlpServiceSDK
+    var connectorId: Long? = null
+    var requestId: Long? = null
 
 
     override fun predict(req: Payload, conf: Payload?): MlpPartialBinaryResponse {
@@ -61,30 +69,27 @@ class GigaChatService() : MlpService() {
         val config = conf?.data?.let { JSON.parse(it, PredictConfig::class.java) }
         val gigaChatRequest = createGigaChatRequest(request, config)
 
+        requestId = MDC.get("gateRequestId").toLong()
+        connectorId = MDC.get("connectorId").toLong()
+
         runBlocking {
             connector.sendMessageToGigaChatAsync(gigaChatRequest) { gigaChatReponse ->
-                println()
-                println("__________________________")
-                println(gigaChatReponse)
-                println("__________________________")
-                println()
-                val partitionProto = createPartialResponse(gigaChatReponse)
+                val chatCompletionResponse = createChatCompletionResponseAsync(gigaChatReponse)
+                val partitionProto = createPartialResponse(chatCompletionResponse)
+
                 println()
                 println("__________________________")
                 println(partitionProto)
                 println("__________________________")
                 println()
+
                 launch {
-                    //  MDC.get("connectorId").toLong()
-                    sdk.send(MDC.get("connectorId").toLong(), partitionProto)
+                    sdk.send(connectorId!!, partitionProto)
                 }
             }
         }
         return MlpPartialBinaryResponse()
     }
-
-
-
 
 
 //        val responseWrapper = runBlocking(dispatcher + MDCContext()) {
@@ -97,19 +102,17 @@ class GigaChatService() : MlpService() {
 
 
     fun createPartialResponse(response: Any): ServiceToGateProto {
+
         return ServiceToGateProto.newBuilder()
-            // сюда надо поставить requestId тот же что и был в запросе
-            // достать его можно только из MDC
-                // MDC.get("gateRequestId").toLong()
-//            .setRequestId("requestID".toLong())
+            .setRequestId(requestId!!)
             .setPartialPredict(
                 PartialPredictResponseProto.newBuilder()
-                    .setStart(false) // сдесь должны быть корректные значения особенно для finish
-                    .setFinish(false)
+                    .setStart(isFirstMessage)
+                    .setFinish(isLastMessage)
                     .setData(
                         PayloadProto.newBuilder()
-                            .setJson(JSON.stringify(response)) // тело ответа в JSON
-                            .setDataType("json") // поле на будущее, сейчас смысла не несет
+                            .setJson(JSON.stringify(response))
+                            .setDataType("json")
                     )
             )
             .putHeaders("Z-custom-billing", "priceInNanoToken")

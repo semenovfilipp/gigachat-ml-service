@@ -1,7 +1,6 @@
 package gigachat
 
 import com.mlp.sdk.utils.JSON
-import com.mlp.sdk.utils.JSON.asJson
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.*
@@ -24,6 +23,9 @@ private const val URL_GIGA_CHAT_COMPLETION = "https://gigachat.devices.sberbank.
 private val MEDIA_TYPE_JSON = "application/json".toMediaType()
 private const val TOKEN_EXPIRATION_DURATION = 30 * 60 * 1000
 var CERT_PATH = ""
+var isFirstMessage = false
+var isLastMessage = false
+var count: Int = 0
 
 
 /*
@@ -215,21 +217,37 @@ class GigaChatConnector(val initConfig: InitConfig) {
                     override fun onResponse(call: Call, response: Response) {
                         val reader = BufferedReader(response.body!!.charStream())
                         var line: String?
-                        while (reader.readLine().also { line = it } != null) {
-                            if (line!!.isNotEmpty() && !line.equals("data: [DONE]")) {
-                                val cleanResponseBody = line!!.replace("data:", "")
-                                val result = JSON.parse(cleanResponseBody, GigaChatResponseAsync::class.java)
-                                println("______________________")
-                                println()
-                                println(result)
-                                println()
-                                println("______________________")
+                        try {
+                            while (reader.readLine().also { line = it } != null) {
+                                if (line!!.isNotEmpty() && !line.equals("data: [DONE]")) {
+                                    val cleanResponseBody = line!!.replace("data:", "")
+                                    val result = JSON.parse(cleanResponseBody, GigaChatResponseAsync::class.java)
 
-                                callback.invoke(result)
+                                    isFirstMessage = count == 0
+                                    count++
+                                    callback.invoke(result)
+
+                                } else if (line!!.equals("data: [DONE]")) {
+                                    val emptyResponse = GigaChatResponseAsync(emptyList(), 0, "", "")
+                                    isLastMessage = true
+                                    callback.invoke(emptyResponse)
+                                }
+                            }
+                        } catch (e: IOException) {
+                            throw  e
+
+                        } finally {
+                            try {
+                                reader.close()
+                            } catch (e: IOException) {
+                                throw e
                             }
                         }
-                    }
 
+                        isLastMessage = false
+                        isFirstMessage = false
+                        count = 0
+                    }
                 })
             } catch (e: Exception) {
                 callback.invoke(GigaChatResponseAsync(emptyList(), 0, "", ""))
