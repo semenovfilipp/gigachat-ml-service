@@ -70,6 +70,9 @@ class GigaChatService : MlpService() {
         }
     }
 
+    /*
+     * Асинхронная и синхронная функции для отправки сообщений
+     */
     private fun predictAsync(gigaChatRequest: GigaChatRequest): MlpPartialBinaryResponse {
         runBlocking {
             connector.sendMessageToGigaChatAsync(gigaChatRequest) { gigaChatReponse ->
@@ -108,9 +111,9 @@ class GigaChatService : MlpService() {
 
         GlobalScope.launch {
             sdk.send(connectorId!!, partitionProto)
+            BillingUnitsThreadLocal.setUnits(priceInNanoTokens)
         }
 
-        BillingUnitsThreadLocal.setUnits(priceInNanoTokens)
         return MlpPartialBinaryResponse()
     }
 
