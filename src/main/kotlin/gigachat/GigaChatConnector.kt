@@ -25,13 +25,23 @@ private const val TOKEN_EXPIRATION_DURATION = 30 * 60 * 1000
 var CERT_PATH = ""
 var isFirstMessage = false
 var isLastMessage = false
-var count: Int = 0
-var symbolsFromGigaAsync : Int = 0
-
 
 /*
- * Дата классы запроса в GigaChat
+ Дата классы для подсчета токенов при запросе
  */
+data class GigaChatTokenCountRequest(
+    val model: String,
+    val input: String
+)
+data class GigaChatTokenCountResponse(
+    val tokens: Int,
+    val `object` : String,
+    val characters: Int
+)
+
+/*
+* Дата классы запроса в GigaChat
+*/
 data class GigaChatRequest(
     val model: String,
     val messages: List<GigaChatMessage>,
@@ -102,11 +112,13 @@ data class Choices(
 )
 
 
+
 class GigaChatConnector(val initConfig: InitConfig) {
     private var tokenExpirationTime: Long = 0L
     private var bearerToken: String = ""
 
     private val client = configureSSLClient()
+    private var count: Int = 0
 
     /*
      * Отправление запроса на сервер GigaChat
@@ -230,10 +242,6 @@ class GigaChatConnector(val initConfig: InitConfig) {
                                     val cleanResponseBody = line!!.replace("data:", "")
                                     val result = JSON.parse(cleanResponseBody, GigaChatResponseAsync::class.java)
 
-                                    symbolsFromGigaAsync= result.choices.map {
-                                        it.delta.content.length
-                                    }.sum()
-
 
                                     isFirstMessage = count == 0
                                     count++
@@ -258,13 +266,29 @@ class GigaChatConnector(val initConfig: InitConfig) {
 
                         isLastMessage = false
                         isFirstMessage = false
-                        count = 0
-                        symbolsFromGigaAsync = 0
                     }
                 })
             } catch (e: Exception) {
                 callback.invoke(GigaChatResponseAsync(emptyList(), 0, "", ""))
             }
         }
+    }
+
+    fun sendMessageToCountTokens(tokenCountRequest: GigaChatTokenCountRequest): GigaChatTokenCountResponse {
+        updateBearerToken()
+
+        val request = Request.Builder()
+            .url("https://gigachat.devices.sberbank.ru/api/v1/tokens/count")
+            .header("Authorization", "Bearer $bearerToken")
+            .header("Accept", "application/json")
+            .header("Content-Type", "application/json")
+            .post(JSON.stringify(tokenCountRequest).toRequestBody(MEDIA_TYPE_JSON))
+            .build()
+
+        val response = client.newCall(request).execute()
+        if (!response.isSuccessful) {
+            throw IOException("Unexpected code ${response.code}")
+        }
+        return JSON.parse(response.body!!.string(), GigaChatTokenCountResponse::class.java)
     }
 }
