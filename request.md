@@ -1,4 +1,5 @@
-// ______TRUE________
+## stream = true
+```
 {
   "model": "GigaChat",
   "messages": [
@@ -15,7 +16,10 @@
   "repetition_penalty": 1,
   "update_interval": 0
 }
-// ______FALSE________
+```
+
+## stream = false
+```
 {
   "model": "GigaChat",
   "messages": [
@@ -32,3 +36,4 @@
   "repetition_penalty": 1,
   "update_interval": 0
 }
+```

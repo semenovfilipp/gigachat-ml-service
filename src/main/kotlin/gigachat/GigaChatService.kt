@@ -11,7 +11,6 @@ import com.mlp.sdk.utils.JSON
 import kotlinx.coroutines.*
 import org.slf4j.MDC
 import kotlin.io.path.Path
-import kotlinx.coroutines.*
 
 
 /*
@@ -53,6 +52,7 @@ class GigaChatService : MlpService() {
     private var connectorId: Long? = null
     private var requestId: Long? = null
     private var priceInNanoTokens: Long = 0L
+    private var totalTokens: Long = 0L
 
 
     override fun predict(req: Payload, conf: Payload?): MlpPartialBinaryResponse {
@@ -78,6 +78,7 @@ class GigaChatService : MlpService() {
             connector.sendMessageToGigaChatAsync(gigaChatRequest) { gigaChatReponse ->
                 val chatCompletionResponse = createChatCompletionResponseAsync(gigaChatReponse)
                 val partitionProto = createPartialResponse(chatCompletionResponse)
+                calculateCostForAsyncRequest(gigaChatRequest, symbolsFromGigaAsync)
 
                 println()
                 println("__________________________")
@@ -86,6 +87,7 @@ class GigaChatService : MlpService() {
                 println()
 
                 launch {
+                    println(calculateTotalTokens()) // не печатает
                     sdk.send(connectorId!!, partitionProto)
                 }
             }
@@ -96,7 +98,7 @@ class GigaChatService : MlpService() {
 
     private fun predictSync(gigaChatRequest: GigaChatRequest): MlpPartialBinaryResponse {
         val gigaChatResponse = connector.sendMessageToGigaChat(gigaChatRequest)
-        calculateCost(gigaChatRequest, gigaChatResponse)
+        calculateCostForSyncRequest(gigaChatRequest, gigaChatResponse)
 
         val chatCompletionResponse = createChatCompletionResponse(gigaChatResponse)
         isLastMessage = true
@@ -119,17 +121,45 @@ class GigaChatService : MlpService() {
 
 
     /*
-     * Подсчет итоговой стоимости
-     * Работает только для синхронного запроса
+     * Подсчет итоговой стоимости запроса
      */
-    fun calculateCost(request: GigaChatRequest, response: GigaChatResponse) {
+    fun calculateCostForSyncRequest(request: GigaChatRequest, response: GigaChatResponse) {
         /*GigaChat Lite = 200*/
         /*GigaChat Pro = 1500*/
         val priceRubPerMillion = if (request.model == "GigaChat-Pro") 1500 else 200
         val totalTokens = (response.usage.total_tokens).toLong()
+
         val priceInMicroRoubles = totalTokens * priceRubPerMillion
         priceInNanoTokens = priceInMicroRoubles * 50 * 1000
     }
+
+    fun calculateCostForAsyncRequest(
+        request: GigaChatRequest,
+        symbolsFromGigaResponse: Int
+    ) {
+        /*GigaChat Lite = 200*/
+        /*GigaChat Pro = 1500*/
+        val priceRubPerMillion = if (request.model == "GigaChat-Pro") 1500 else 200
+        // 1 токен = 3 символам
+        val totalTokens = (symbolsFromGigaResponse / 3).toLong()
+
+        val priceInMicroRoubles = totalTokens * priceRubPerMillion
+        priceInNanoTokens = priceInMicroRoubles * 50 * 1000
+    }
+
+    fun calculateTotalTokens(): Deferred<Long> {
+        return GlobalScope.async {
+            if (isLastMessage != true) {
+                totalTokens += priceInNanoTokens
+            } else {
+                BillingUnitsThreadLocal.setUnits(totalTokens)
+                totalTokens = 0L
+            }
+            totalTokens
+        }
+    }
+
+
 
 
     fun createPartialResponse(response: Any): ServiceToGateProto {
@@ -146,7 +176,7 @@ class GigaChatService : MlpService() {
                             .setDataType("json")
                     )
             )
-            .putHeaders("Z-custom-billing", "priceInNanoToken")
+            .putHeaders("Z-custom-billing", priceInNanoTokens.toString())
             .build()
     }
 

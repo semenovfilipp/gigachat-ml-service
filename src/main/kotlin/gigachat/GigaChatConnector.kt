@@ -26,6 +26,7 @@ var CERT_PATH = ""
 var isFirstMessage = false
 var isLastMessage = false
 var count: Int = 0
+var symbolsFromGigaAsync : Int = 0
 
 
 /*
@@ -229,6 +230,11 @@ class GigaChatConnector(val initConfig: InitConfig) {
                                     val cleanResponseBody = line!!.replace("data:", "")
                                     val result = JSON.parse(cleanResponseBody, GigaChatResponseAsync::class.java)
 
+                                    symbolsFromGigaAsync= result.choices.map {
+                                        it.delta.content.length
+                                    }.sum()
+
+
                                     isFirstMessage = count == 0
                                     count++
                                     callback.invoke(result)
@@ -253,6 +259,7 @@ class GigaChatConnector(val initConfig: InitConfig) {
                         isLastMessage = false
                         isFirstMessage = false
                         count = 0
+                        symbolsFromGigaAsync = 0
                     }
                 })
             } catch (e: Exception) {
