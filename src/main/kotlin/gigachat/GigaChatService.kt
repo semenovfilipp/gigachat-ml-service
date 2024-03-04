@@ -53,6 +53,7 @@ class GigaChatService : MlpService() {
     private var requestId: Long? = null
     private var priceInNanoTokens: Long = 0L
     private var priceForTokens: Long = 0L
+    private var messages: MutableList<String> = mutableListOf()
 
 
     override fun predict(req: Payload, conf: Payload?): MlpPartialBinaryResponse {
@@ -74,11 +75,14 @@ class GigaChatService : MlpService() {
      * Асинхронная и синхронная функции для отправки сообщений
      */
     private fun predictAsync(gigaChatRequest: GigaChatRequest): MlpPartialBinaryResponse {
-        calculateCostForAsyncRequest(gigaChatRequest)
         runBlocking {
             connector.sendMessageToGigaChatAsync(gigaChatRequest) { gigaChatReponse ->
+                val message = gigaChatReponse.choices.first().delta.content
+                messages.add(message)
+
                 val chatCompletionResponse = createChatCompletionResponseAsync(gigaChatReponse)
-                updatePrice()
+                updatePrice(gigaChatReponse)
+
                 val partitionProto = createPartialResponse(chatCompletionResponse)
 
                 println()
@@ -95,9 +99,17 @@ class GigaChatService : MlpService() {
         return MlpPartialBinaryResponse()
     }
 
-    private fun updatePrice() {
+    private fun updatePrice(gigaChatResponse: GigaChatResponseAsync) {
         if (isLastMessage) {
-            priceInNanoTokens = priceForTokens
+            val tokenCountRequest = GigaChatTokenCountRequest(
+                model = gigaChatResponse.model,
+                input = messages.joinToString(separator = "")
+            )
+            val gigaChatTokenCountResponse = connector.sendMessageToCountTokens(tokenCountRequest)
+            val model = gigaChatResponse.model
+            val tokens = gigaChatTokenCountResponse.tokens
+
+            calculateCostForAsyncRequest(model, tokens)
         } else {
             priceInNanoTokens = 0L
         }
@@ -132,7 +144,7 @@ class GigaChatService : MlpService() {
      * Подсчет итоговой стоимости запроса
      */
     fun calculateCostForSyncRequest(request: GigaChatRequest, response: GigaChatResponse) {
-        /*GigaChat Lite = 200*/
+        /*GigaChat Lite/latest = 200*/
         /*GigaChat Pro = 1500*/
         val priceRubPerMillion = if (request.model == "GigaChat-Pro") 1500 else 200
         val totalTokens = (response.usage.total_tokens).toLong()
@@ -141,18 +153,11 @@ class GigaChatService : MlpService() {
         priceInNanoTokens = priceInMicroRoubles * 50 * 1000
     }
 
-    fun calculateCostForAsyncRequest(gigaChatRequest: GigaChatRequest) {
-        val tokenCountRequest = GigaChatTokenCountRequest(
-            model = gigaChatRequest.model,
-            input = gigaChatRequest.messages.first().content
-        )
-        val gigaChatTokenCountResponse = connector.sendMessageToCountTokens(tokenCountRequest)
-        val totalTokens = (gigaChatTokenCountResponse.tokens).toLong()
-
+    fun calculateCostForAsyncRequest(model: String, tokens: Int) {
         /*GigaChat Lite = 200*/
         /*GigaChat Pro = 1500*/
-        val priceRubPerMillion = if (gigaChatRequest.model == "GigaChat-Pro") 1500 else 200
-        val priceInMicroRoubles = totalTokens * priceRubPerMillion
+        val priceRubPerMillion = if (model == "GigaChat-Pro") 1500 else 200
+        val priceInMicroRoubles = (tokens).toLong() * priceRubPerMillion
         priceForTokens = priceInMicroRoubles * 50 * 1000
     }
 
