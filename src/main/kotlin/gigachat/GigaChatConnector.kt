@@ -25,6 +25,37 @@ private const val TOKEN_EXPIRATION_DURATION = 30 * 60 * 1000
 var CERT_PATH = ""
 var isFirstMessage = false
 var isLastMessage = false
+/*
+ * Дата класс для получения ответа от Athina
+ */
+data class AthinaApiResponse(
+    val status: String,
+    val data: Data
+)
+data class Data(
+    val prompt_run_id: String
+)
+
+/*
+ * Дата класс для запроса логирования Athina синхронный
+ */
+data class AthinaApiRequestSync(
+    val language_model_id: String,
+    val prompt: Prompt,
+    val response: GigaChatResponse
+)
+data class Prompt(
+    val role: String,
+    val content: String
+)
+/*
+ * Дата класс для запроса логирования Athina Асинхронный
+ */
+data class AthinaApiRequestAsync(
+    val language_model_id: String,
+    val prompt: Prompt,
+    val response: GigaChatResponseAsync
+)
 
 /*
  Дата классы для подсчета токенов при запросе
@@ -118,6 +149,7 @@ class GigaChatConnector(val initConfig: InitConfig) {
     private var bearerToken: String = ""
 
     private val client = configureSSLClient()
+    private val athinaClient = OkHttpClient()
     private var count: Int = 0
 
     /*
@@ -227,7 +259,7 @@ class GigaChatConnector(val initConfig: InitConfig) {
             ),
             model = gigaReq.model,
             `object` = "chat.completion",
-            created =  System.currentTimeMillis()
+            created = System.currentTimeMillis()
         )
 
         withContext(Dispatchers.IO) {
@@ -287,6 +319,9 @@ class GigaChatConnector(val initConfig: InitConfig) {
         }
     }
 
+    /*
+     * Отправления сообщения для подсчета токенов
+     */
     fun sendMessageToCountTokens(tokenCountRequest: GigaChatTokenCountRequest): GigaChatTokenCountResponse {
         updateBearerToken()
 
@@ -303,5 +338,55 @@ class GigaChatConnector(val initConfig: InitConfig) {
             throw IOException("Unexpected code ${response.code}")
         }
         return JSON.parse(response.body!!.string(), GigaChatTokenCountResponse::class.java)
+    }
+
+    fun sendLogsInferenceToAthinaSync(gigaChatRequest: GigaChatRequest, gigaChatResponse: GigaChatResponse) : AthinaApiResponse {
+
+        val body = AthinaApiRequestSync(
+            language_model_id = "",
+            prompt = Prompt(
+                role = gigaChatRequest.messages.first().role,
+                content = gigaChatRequest.messages.first().content
+            ),
+            response = gigaChatResponse
+        )
+
+        val request = Request.Builder()
+            .url("https://log.athina.ai/api/v1/log/inference")
+            .header("Content-Type", "application/json")
+            .header("athina-api-key", "UMY16LUIYnMlnYKaEqhhBWs8HZiDdgA9")
+            .post(JSON.stringify(body).toRequestBody(MEDIA_TYPE_JSON))
+            .build()
+
+        val response = athinaClient.newCall(request).execute()
+        if (!response.isSuccessful) {
+            throw IOException("Unexpected code ${response.code}")
+        }
+        return JSON.parse(response.body!!.string(), AthinaApiResponse::class.java)
+    }
+
+    fun sendLogsInferenceToAthinaAsync(gigaChatRequest: GigaChatRequest, gigaChatResponseAsync: GigaChatResponseAsync) : AthinaApiResponse {
+
+        val body = AthinaApiRequestAsync(
+            language_model_id = "",
+            prompt = Prompt(
+                role = gigaChatRequest.messages.first().role,
+                content = gigaChatRequest.messages.first().content
+            ),
+            response = gigaChatResponseAsync
+        )
+
+        val request = Request.Builder()
+            .url("https://log.athina.ai/api/v1/log/inference")
+            .header("Content-Type", "application/json")
+            .header("athina-api-key", "UMY16LUIYnMlnYKaEqhhBWs8HZiDdgA9")
+            .post(JSON.stringify(body).toRequestBody(MEDIA_TYPE_JSON))
+            .build()
+
+        val response = athinaClient.newCall(request).execute()
+        if (!response.isSuccessful) {
+            throw IOException("Unexpected code ${response.code}")
+        }
+        return JSON.parse(response.body!!.string(), AthinaApiResponse::class.java)
     }
 }

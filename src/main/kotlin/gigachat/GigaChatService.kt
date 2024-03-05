@@ -52,7 +52,6 @@ class GigaChatService : MlpService() {
     private var connectorId: Long? = null
     private var requestId: Long? = null
     private var priceInNanoTokens: Long = 0L
-    private var priceForTokens: Long = 0L
     private var messages: MutableList<String> = mutableListOf()
 
 
@@ -80,6 +79,7 @@ class GigaChatService : MlpService() {
                 val message = gigaChatReponse.choices.first().delta.content
                 messages.add(message)
 
+                val athinaResponse = connector.sendLogsInferenceToAthinaAsync(gigaChatRequest,gigaChatReponse)
                 val chatCompletionResponse = createChatCompletionResponseAsync(gigaChatReponse)
                 updatePrice(gigaChatRequest,gigaChatReponse,defaultPredictConfig.systemPrompt)
 
@@ -88,6 +88,7 @@ class GigaChatService : MlpService() {
                 println()
                 println("__________________________")
                 println(partitionProto)
+                println(athinaResponse)
                 println("__________________________")
                 println()
 
@@ -99,30 +100,11 @@ class GigaChatService : MlpService() {
         return MlpPartialBinaryResponse()
     }
 
-    private fun updatePrice(gigaChatRequest: GigaChatRequest,gigaChatResponse: GigaChatResponseAsync,systemPrompt: String?) {
-        if (isLastMessage) {
-            val inputMessageFromRequest = gigaChatRequest.messages.first().content
-            val systemPrompt = systemPrompt ?: ""
-            val model = gigaChatResponse.model
-            val tokenCountRequest = GigaChatTokenCountRequest(
-                model = model,
-                input = messages.joinToString(separator = "") + inputMessageFromRequest + systemPrompt
-            )
-            val gigaChatTokenCountResponse = connector.sendMessageToCountTokens(tokenCountRequest)
-            val totalTokens = gigaChatTokenCountResponse.tokens
-
-            calculateCostForAsyncRequest(model, totalTokens)
-            messages.clear()
-        } else {
-            priceInNanoTokens = 0L
-        }
-    }
-
-
     private fun predictSync(gigaChatRequest: GigaChatRequest): MlpPartialBinaryResponse {
         val gigaChatResponse = connector.sendMessageToGigaChat(gigaChatRequest)
         calculateCostForSyncRequest(gigaChatRequest, gigaChatResponse)
 
+        val athinaResponse = connector.sendLogsInferenceToAthinaSync(gigaChatRequest,gigaChatResponse)
         val chatCompletionResponse = createChatCompletionResponse(gigaChatResponse)
         isLastMessage = true
         val partitionProto = createPartialResponse(chatCompletionResponse)
@@ -131,6 +113,7 @@ class GigaChatService : MlpService() {
         println()
         println("__________________________")
         println(partitionProto)
+        println(athinaResponse)
         println("__________________________")
         println()
 
@@ -141,6 +124,8 @@ class GigaChatService : MlpService() {
 
         return MlpPartialBinaryResponse()
     }
+
+
 
 
     /*
@@ -162,6 +147,24 @@ class GigaChatService : MlpService() {
         val priceRubPerMillion = if (model == "GigaChat-Pro") 1500 else 200
         val priceInMicroRoubles = (totalTokens).toLong() * priceRubPerMillion
         priceInNanoTokens = priceInMicroRoubles * 50 * 1000
+    }
+    private fun updatePrice(gigaChatRequest: GigaChatRequest,gigaChatResponse: GigaChatResponseAsync,systemPrompt: String?) {
+        if (isLastMessage) {
+            val inputMessageFromRequest = gigaChatRequest.messages.first().content
+            val systemPrompt = systemPrompt ?: ""
+            val model = gigaChatResponse.model
+            val tokenCountRequest = GigaChatTokenCountRequest(
+                model = model,
+                input = messages.joinToString(separator = "") + inputMessageFromRequest + systemPrompt
+            )
+            val gigaChatTokenCountResponse = connector.sendMessageToCountTokens(tokenCountRequest)
+            val totalTokens = gigaChatTokenCountResponse.tokens
+
+            calculateCostForAsyncRequest(model, totalTokens)
+            messages.clear()
+        } else {
+            priceInNanoTokens = 0L
+        }
     }
 
 
