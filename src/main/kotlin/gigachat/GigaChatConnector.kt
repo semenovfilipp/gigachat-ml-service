@@ -33,9 +33,10 @@ data class GigaChatTokenCountRequest(
     val model: String,
     val input: String
 )
+
 data class GigaChatTokenCountResponse(
     val tokens: Int,
-    val `object` : String,
+    val `object`: String,
     val characters: Int
 )
 
@@ -110,7 +111,6 @@ data class Choices(
     val delta: Delta,
     val index: Int
 )
-
 
 
 class GigaChatConnector(val initConfig: InitConfig) {
@@ -215,6 +215,20 @@ class GigaChatConnector(val initConfig: InitConfig) {
         callback: (GigaChatResponseAsync) -> Unit
     ) {
         updateBearerToken()
+        val emptyResponse = GigaChatResponseAsync(
+            choices = listOf(
+                Choices(
+                    delta = Delta(
+                        content = "",
+                        role = "assistant"
+                    ),
+                    index = 0
+                )
+            ),
+            model = gigaReq.model,
+            `object` = "chat.completion",
+            created =  System.currentTimeMillis()
+        )
 
         withContext(Dispatchers.IO) {
             val client = configureSSLClient()
@@ -230,7 +244,7 @@ class GigaChatConnector(val initConfig: InitConfig) {
             try {
                 client.newCall(request).enqueue(object : Callback {
                     override fun onFailure(call: Call, e: IOException) {
-                        callback.invoke(GigaChatResponseAsync(emptyList(), 0, "", ""))
+                        callback.invoke(emptyResponse)
                     }
 
                     override fun onResponse(call: Call, response: Response) {
@@ -248,7 +262,6 @@ class GigaChatConnector(val initConfig: InitConfig) {
                                     callback.invoke(result)
 
                                 } else if (line!! == "data: [DONE]") {
-                                    val emptyResponse = GigaChatResponseAsync(emptyList(), 0, "", "")
                                     isLastMessage = true
                                     callback.invoke(emptyResponse)
                                 }
@@ -269,7 +282,7 @@ class GigaChatConnector(val initConfig: InitConfig) {
                     }
                 })
             } catch (e: Exception) {
-                callback.invoke(GigaChatResponseAsync(emptyList(), 0, "", ""))
+                callback.invoke(emptyResponse)
             }
         }
     }

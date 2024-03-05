@@ -81,7 +81,7 @@ class GigaChatService : MlpService() {
                 messages.add(message)
 
                 val chatCompletionResponse = createChatCompletionResponseAsync(gigaChatReponse)
-                updatePrice(gigaChatReponse)
+                updatePrice(gigaChatRequest,gigaChatReponse,defaultPredictConfig.systemPrompt)
 
                 val partitionProto = createPartialResponse(chatCompletionResponse)
 
@@ -99,17 +99,20 @@ class GigaChatService : MlpService() {
         return MlpPartialBinaryResponse()
     }
 
-    private fun updatePrice(gigaChatResponse: GigaChatResponseAsync) {
+    private fun updatePrice(gigaChatRequest: GigaChatRequest,gigaChatResponse: GigaChatResponseAsync,systemPrompt: String?) {
         if (isLastMessage) {
+            val inputMessageFromRequest = gigaChatRequest.messages.first().content
+            val systemPrompt = systemPrompt ?: ""
+            val model = gigaChatResponse.model
             val tokenCountRequest = GigaChatTokenCountRequest(
-                model = gigaChatResponse.model,
-                input = messages.joinToString(separator = "")
+                model = model,
+                input = messages.joinToString(separator = "") + inputMessageFromRequest + systemPrompt
             )
             val gigaChatTokenCountResponse = connector.sendMessageToCountTokens(tokenCountRequest)
-            val model = gigaChatResponse.model
-            val tokens = gigaChatTokenCountResponse.tokens
+            val totalTokens = gigaChatTokenCountResponse.tokens
 
-            calculateCostForAsyncRequest(model, tokens)
+            calculateCostForAsyncRequest(model, totalTokens)
+            messages.clear()
         } else {
             priceInNanoTokens = 0L
         }
@@ -153,12 +156,12 @@ class GigaChatService : MlpService() {
         priceInNanoTokens = priceInMicroRoubles * 50 * 1000
     }
 
-    fun calculateCostForAsyncRequest(model: String, tokens: Int) {
+    fun calculateCostForAsyncRequest(model: String, totalTokens: Int) {
         /*GigaChat Lite = 200*/
         /*GigaChat Pro = 1500*/
         val priceRubPerMillion = if (model == "GigaChat-Pro") 1500 else 200
-        val priceInMicroRoubles = (tokens).toLong() * priceRubPerMillion
-        priceForTokens = priceInMicroRoubles * 50 * 1000
+        val priceInMicroRoubles = (totalTokens).toLong() * priceRubPerMillion
+        priceInNanoTokens = priceInMicroRoubles * 50 * 1000
     }
 
 
