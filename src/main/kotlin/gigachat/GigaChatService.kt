@@ -11,6 +11,9 @@ import com.mlp.sdk.utils.JSON
 import kotlinx.coroutines.*
 import org.slf4j.MDC
 import kotlin.io.path.Path
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
 
 
 /*
@@ -65,6 +68,7 @@ class GigaChatService : MlpService() {
 
         return if (gigaChatRequest.stream) {
             predictAsync(gigaChatRequest)
+
         } else {
             predictSync(gigaChatRequest)
         }
@@ -79,32 +83,42 @@ class GigaChatService : MlpService() {
                 val message = gigaChatReponse.choices.first().delta.content
                 messages.add(message)
 
-                val athinaResponse = connector.sendLogsInferenceToAthinaAsync(gigaChatRequest,gigaChatReponse)
+                val athina = async {
+                    connector.sendLogsInferenceToAthinaAsync(gigaChatRequest, gigaChatReponse)
+                }
+
+
                 val chatCompletionResponse = createChatCompletionResponseAsync(gigaChatReponse)
-                updatePrice(gigaChatRequest,gigaChatReponse,defaultPredictConfig.systemPrompt)
+                updatePrice(gigaChatRequest, gigaChatReponse, defaultPredictConfig.systemPrompt)
 
                 val partitionProto = createPartialResponse(chatCompletionResponse)
 
                 println()
                 println("__________________________")
                 println(partitionProto)
-                println(athinaResponse)
                 println("__________________________")
                 println()
 
                 launch {
+                    athina.await()
                     sdk.send(connectorId!!, partitionProto)
                 }
+                println()
+                println("__________________________")
+                println(athina)
+                println("__________________________")
+                println()
             }
         }
         return MlpPartialBinaryResponse()
     }
 
+
     private fun predictSync(gigaChatRequest: GigaChatRequest): MlpPartialBinaryResponse {
         val gigaChatResponse = connector.sendMessageToGigaChat(gigaChatRequest)
         calculateCostForSyncRequest(gigaChatRequest, gigaChatResponse)
 
-        val athinaResponse = connector.sendLogsInferenceToAthinaSync(gigaChatRequest,gigaChatResponse)
+        val athinaResponse = connector.sendLogsInferenceToAthinaSync(gigaChatRequest, gigaChatResponse)
         val chatCompletionResponse = createChatCompletionResponse(gigaChatResponse)
         isLastMessage = true
         val partitionProto = createPartialResponse(chatCompletionResponse)
@@ -124,8 +138,6 @@ class GigaChatService : MlpService() {
 
         return MlpPartialBinaryResponse()
     }
-
-
 
 
     /*
@@ -148,7 +160,12 @@ class GigaChatService : MlpService() {
         val priceInMicroRoubles = (totalTokens).toLong() * priceRubPerMillion
         priceInNanoTokens = priceInMicroRoubles * 50 * 1000
     }
-    private fun updatePrice(gigaChatRequest: GigaChatRequest,gigaChatResponse: GigaChatResponseAsync,systemPrompt: String?) {
+
+    private fun updatePrice(
+        gigaChatRequest: GigaChatRequest,
+        gigaChatResponse: GigaChatResponseAsync,
+        systemPrompt: String?
+    ) {
         if (isLastMessage) {
             val inputMessageFromRequest = gigaChatRequest.messages.first().content
             val systemPrompt = systemPrompt ?: ""

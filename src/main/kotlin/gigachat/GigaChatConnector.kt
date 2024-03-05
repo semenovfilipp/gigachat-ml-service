@@ -1,8 +1,7 @@
 package gigachat
 
 import com.mlp.sdk.utils.JSON
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.*
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -16,6 +15,7 @@ import javax.net.ssl.SSLContext
 import javax.net.ssl.TrustManagerFactory
 import javax.net.ssl.X509TrustManager
 
+
 /*
  * Константы для аутентификации GigaChat
  */
@@ -25,6 +25,7 @@ private const val TOKEN_EXPIRATION_DURATION = 30 * 60 * 1000
 var CERT_PATH = ""
 var isFirstMessage = false
 var isLastMessage = false
+
 /*
  * Дата класс для получения ответа от Athina
  */
@@ -32,6 +33,7 @@ data class AthinaApiResponse(
     val status: String,
     val data: Data
 )
+
 data class Data(
     val prompt_run_id: String
 )
@@ -44,10 +46,12 @@ data class AthinaApiRequestSync(
     val prompt: Prompt,
     val response: GigaChatResponse
 )
+
 data class Prompt(
     val role: String,
     val content: String
 )
+
 /*
  * Дата класс для запроса логирования Athina Асинхронный
  */
@@ -340,7 +344,10 @@ class GigaChatConnector(val initConfig: InitConfig) {
         return JSON.parse(response.body!!.string(), GigaChatTokenCountResponse::class.java)
     }
 
-    fun sendLogsInferenceToAthinaSync(gigaChatRequest: GigaChatRequest, gigaChatResponse: GigaChatResponse) : AthinaApiResponse {
+    fun sendLogsInferenceToAthinaSync(
+        gigaChatRequest: GigaChatRequest,
+        gigaChatResponse: GigaChatResponse
+    ): AthinaApiResponse {
 
         val body = AthinaApiRequestSync(
             language_model_id = "",
@@ -365,13 +372,16 @@ class GigaChatConnector(val initConfig: InitConfig) {
         return JSON.parse(response.body!!.string(), AthinaApiResponse::class.java)
     }
 
-    fun sendLogsInferenceToAthinaAsync(gigaChatRequest: GigaChatRequest, gigaChatResponseAsync: GigaChatResponseAsync) : AthinaApiResponse {
 
+    fun sendLogsInferenceToAthinaAsync(
+        gigaChatRequest: GigaChatRequest,
+        gigaChatResponseAsync: GigaChatResponseAsync
+    ): Deferred<AthinaApiResponse> = CoroutineScope(Dispatchers.IO).async {
         val body = AthinaApiRequestAsync(
             language_model_id = "",
             prompt = Prompt(
-                role = gigaChatRequest.messages.first().role,
-                content = gigaChatRequest.messages.first().content
+                role = gigaChatRequest.messages.first().role ?: "",
+                content = gigaChatRequest.messages.first().content ?: ""
             ),
             response = gigaChatResponseAsync
         )
@@ -387,6 +397,14 @@ class GigaChatConnector(val initConfig: InitConfig) {
         if (!response.isSuccessful) {
             throw IOException("Unexpected code ${response.code}")
         }
-        return JSON.parse(response.body!!.string(), AthinaApiResponse::class.java)
+        val result = JSON.parse(response.body!!.string(), AthinaApiResponse::class.java)
+        println()
+        println("++++++++++++++++++++++++")
+        println(result)
+        println("++++++++++++++++++++++++")
+        println()
+        return@async result
     }
+
+
 }
