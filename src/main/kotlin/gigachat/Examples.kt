@@ -1,6 +1,14 @@
 package gigachat
 
 import com.mlp.sdk.datatypes.chatgpt.*
+import com.mlp.sdk.utils.JSON
+import kotlinx.coroutines.*
+import okhttp3.Call
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.Response
+import java.io.IOException
 
 object examples{
     val REQUEST_EXAMPLE = ChatCompletionRequest(
@@ -27,4 +35,8 @@ object examples{
         temperature = 0.7,
         stream = false,
     )
+
+
+
+
 }

@@ -83,9 +83,15 @@ class GigaChatService : MlpService() {
                 val message = gigaChatReponse.choices.first().delta.content
                 messages.add(message)
 
-                val athina = async {
-                    connector.sendLogsInferenceToAthinaAsync(gigaChatRequest, gigaChatReponse)
+                runBlocking {
+                    val athina = connector.sendLogsInferenceToAthinaAsync(gigaChatRequest, gigaChatReponse)
+                    println()
+                    println("__________________________")
+                    println(athina)
+                    println("__________________________")
+                    println()
                 }
+
 
 
                 val chatCompletionResponse = createChatCompletionResponseAsync(gigaChatReponse)
@@ -100,14 +106,9 @@ class GigaChatService : MlpService() {
                 println()
 
                 launch {
-                    athina.await()
                     sdk.send(connectorId!!, partitionProto)
                 }
-                println()
-                println("__________________________")
-                println(athina)
-                println("__________________________")
-                println()
+
             }
         }
         return MlpPartialBinaryResponse()

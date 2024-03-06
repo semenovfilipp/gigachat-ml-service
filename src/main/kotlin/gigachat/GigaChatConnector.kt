@@ -1,7 +1,8 @@
 package gigachat
 
 import com.mlp.sdk.utils.JSON
-import kotlinx.coroutines.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -30,8 +31,8 @@ var isLastMessage = false
  * Дата класс для получения ответа от Athina
  */
 data class AthinaApiResponse(
-    val status: String,
-    val data: Data
+    val status: String?,
+    val data: Data?
 )
 
 data class Data(
@@ -373,10 +374,13 @@ class GigaChatConnector(val initConfig: InitConfig) {
     }
 
 
-    fun sendLogsInferenceToAthinaAsync(
+
+    suspend fun sendLogsInferenceToAthinaAsync(
         gigaChatRequest: GigaChatRequest,
         gigaChatResponseAsync: GigaChatResponseAsync
-    ): Deferred<AthinaApiResponse> = CoroutineScope(Dispatchers.IO).async {
+    ): AthinaApiResponse = withContext(Dispatchers.IO) {
+        val athinaClient = OkHttpClient()
+
         val body = AthinaApiRequestAsync(
             language_model_id = "",
             prompt = Prompt(
@@ -393,18 +397,19 @@ class GigaChatConnector(val initConfig: InitConfig) {
             .post(JSON.stringify(body).toRequestBody(MEDIA_TYPE_JSON))
             .build()
 
-        val response = athinaClient.newCall(request).execute()
-        if (!response.isSuccessful) {
-            throw IOException("Unexpected code ${response.code}")
+        try {
+            val response = athinaClient.newCall(request).execute()
+            if (!response.isSuccessful) {
+                throw IOException("Unexpected code ${response.code}")
+            }
+            JSON.parse(response.body!!.string(), AthinaApiResponse::class.java)
+        } catch (e: IOException) {
+
+            throw Exception("Error while making HTTP request: ${e.message}", e)
         }
-        val result = JSON.parse(response.body!!.string(), AthinaApiResponse::class.java)
-        println()
-        println("++++++++++++++++++++++++")
-        println(result)
-        println("++++++++++++++++++++++++")
-        println()
-        return@async result
     }
+
+
 
 
 }
