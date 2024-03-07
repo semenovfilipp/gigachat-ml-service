@@ -82,15 +82,16 @@ class GigaChatService : MlpService() {
                 val message = gigaChatReponse.choices.first().delta.content
                 messages.add(message)
 
-                    val athina = connector.sendLogsInferenceToAthinaAsync(gigaChatRequest, gigaChatReponse){
-                        athinaResponse ->
-                        println()
-                        println("______________________")
-                        println("Отправляем логи в  Athina $athinaResponse")
-                        println("______________________")
-                        println()
-
-                    }
+                val athina = connector.sendLogsInferenceToAthinaAsync(gigaChatRequest,gigaChatReponse)
+//                    val athina = connector.sendLogsInferenceToAthinaAsync(gigaChatRequest, gigaChatReponse){
+//                        athinaResponse ->
+//                        println()
+//                        println("______________________")
+//                        println("Отправляем логи в  Athina $athinaResponse")
+//                        println("______________________")
+//                        println()
+//
+//                    }
 
 //                val result = runBlocking {
 //                    val athina = connector.sendLogsInferenceToAthinaAsync(gigaChatRequest, gigaChatReponse)
