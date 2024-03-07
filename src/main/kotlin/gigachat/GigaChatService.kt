@@ -11,7 +11,6 @@ import com.mlp.sdk.utils.JSON
 import kotlinx.coroutines.*
 import org.slf4j.MDC
 import kotlin.io.path.Path
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 
@@ -83,18 +82,24 @@ class GigaChatService : MlpService() {
                 val message = gigaChatReponse.choices.first().delta.content
                 messages.add(message)
 
-                val athinaResult = GlobalScope.launch {
-                    val athina = async {
-                        connector.sendLogsInferenceToAthinaAsync(gigaChatRequest, gigaChatReponse)
-                    }
-                    athina.await()
-                }
+                    val athina = connector.sendLogsInferenceToAthinaAsync(gigaChatRequest, gigaChatReponse){
+                        athinaResponse ->
+                        println()
+                        println("______________________")
+                        println("Отправляем логи в  Athina $athinaResponse")
+                        println("______________________")
+                        println()
 
-                println()
-                println("__________________________")
-                println(athinaResult)
-                println("__________________________")
-                println()
+                    }
+
+//                val result = runBlocking {
+//                    val athina = connector.sendLogsInferenceToAthinaAsync(gigaChatRequest, gigaChatReponse)
+//                    println()
+//                    println("__________________________")
+//                    println(athina)
+//                    println("__________________________")
+//                    println()
+//                }
 
 
 
@@ -106,13 +111,13 @@ class GigaChatService : MlpService() {
                 println()
                 println("__________________________")
                 println(partitionProto)
+                println(athina)
                 println("__________________________")
                 println()
 
                 launch {
                     sdk.send(connectorId!!, partitionProto)
                 }
-
             }
         }
         return MlpPartialBinaryResponse()

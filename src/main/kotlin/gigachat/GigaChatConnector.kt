@@ -1,8 +1,6 @@
 package gigachat
 
 import com.mlp.sdk.utils.JSON
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.*
@@ -375,12 +373,11 @@ class GigaChatConnector(val initConfig: InitConfig) {
         return JSON.parse(response.body!!.string(), AthinaApiResponse::class.java)
     }
 
-
     fun sendLogsInferenceToAthinaAsync(
         gigaChatRequest: GigaChatRequest,
-        gigaChatResponseAsync: GigaChatResponseAsync
-    ): Deferred<AthinaApiResponse> {
-        val athinaClient = OkHttpClient()
+        gigaChatResponseAsync: GigaChatResponseAsync,
+        callback: (AthinaApiResponse?) -> Unit
+    ) {
 
         val body = AthinaApiRequestAsync(
             language_model_id = "",
@@ -390,6 +387,12 @@ class GigaChatConnector(val initConfig: InitConfig) {
             ),
             response = gigaChatResponseAsync
         )
+        val emptyResponse = AthinaApiResponse(
+            status = "error",
+            Data(
+                prompt_run_id = "id = null"
+            )
+        )
 
         val request = Request.Builder()
             .url("https://log.athina.ai/api/v1/log/inference")
@@ -398,26 +401,79 @@ class GigaChatConnector(val initConfig: InitConfig) {
             .post(JSON.stringify(body).toRequestBody(MEDIA_TYPE_JSON))
             .build()
 
-        val deferred = CompletableDeferred<AthinaApiResponse>()
-
         athinaClient.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                println("ERROR AT ATHINA ON FAILURE")
+                callback(emptyResponse)
+            }
+
             override fun onResponse(call: Call, response: Response) {
                 if (response.isSuccessful) {
                     val result = JSON.parse(response.body!!.string(), AthinaApiResponse::class.java)
-                    deferred.complete(result)
+                    callback(result)
                 } else {
-                    deferred.completeExceptionally(IOException("Unexpected code ${response.code}"))
+                    println("ОШИБКА В ПОЛУЧЕНИИ ON_RESPONSE ${response.code}")
+                    callback(emptyResponse)
                 }
-            }
-
-            override fun onFailure(call: Call, e: IOException) {
-                deferred.completeExceptionally(e)
+                response.close()
             }
         })
-
-        return deferred
     }
 
+
+//    fun sendLogsInferenceToAthinaAsync(
+//        gigaChatRequest: GigaChatRequest,
+//        gigaChatResponseAsync: GigaChatResponseAsync
+//    ): Deferred<AthinaApiResponse> {
+//        val athinaClient = OkHttpClient()
+//
+//        val body = AthinaApiRequestAsync(
+//            language_model_id = "",
+//            prompt = Prompt(
+//                role = gigaChatRequest.messages.first().role,
+//                content = gigaChatRequest.messages.first().content
+//            ),
+//            response = gigaChatResponseAsync
+//        )
+//
+//        val request = Request.Builder()
+//            .url("https://log.athina.ai/api/v1/log/inference")
+//            .header("Content-Type", "application/json")
+//            .header("athina-api-key", "UMY16LUIYnMlnYKaEqhhBWs8HZiDdgA9")
+//            .post(JSON.stringify(body).toRequestBody(MEDIA_TYPE_JSON))
+//            .build()
+//
+//        val deferred = CompletableDeferred<AthinaApiResponse>()
+//
+//        athinaClient.newCall(request).enqueue(object : Callback {
+//            override fun onResponse(call: Call, response: Response) {
+//                try {
+//                    if (response.isSuccessful) {
+//                        val result = JSON.parse(response.body!!.string(), AthinaApiResponse::class.java)
+//
+//                        println()
+//                        println("__________________________")
+//                        println(result)
+//                        println("__________________________")
+//                        println()
+//
+//                        deferred.complete(result)
+//                    } else {
+//                        deferred.completeExceptionally(IOException("Unexpected code ${response.code}"))
+//                    }
+//                } finally {
+//                    response.close()
+//                }
+//            }
+//
+//
+//            override fun onFailure(call: Call, e: IOException) {
+//                deferred.completeExceptionally(e)
+//            }
+//        })
+//
+//        return deferred
+//    }
 
 
 //    suspend fun sendLogsInferenceToAthinaAsync(
@@ -455,6 +511,6 @@ class GigaChatConnector(val initConfig: InitConfig) {
 //    }
 
 
-
+////////////++++???///
 
 }
