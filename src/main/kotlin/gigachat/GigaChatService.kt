@@ -83,25 +83,6 @@ class GigaChatService : MlpService() {
                 messages.add(message)
 
                 val athina = connector.sendLogsInferenceToAthinaAsync(gigaChatRequest,gigaChatReponse)
-//                    val athina = connector.sendLogsInferenceToAthinaAsync(gigaChatRequest, gigaChatReponse){
-//                        athinaResponse ->
-//                        println()
-//                        println("______________________")
-//                        println("Отправляем логи в  Athina $athinaResponse")
-//                        println("______________________")
-//                        println()
-//
-//                    }
-
-//                val result = runBlocking {
-//                    val athina = connector.sendLogsInferenceToAthinaAsync(gigaChatRequest, gigaChatReponse)
-//                    println()
-//                    println("__________________________")
-//                    println(athina)
-//                    println("__________________________")
-//                    println()
-//                }
-
 
 
                 val chatCompletionResponse = createChatCompletionResponseAsync(gigaChatReponse)
@@ -178,7 +159,7 @@ class GigaChatService : MlpService() {
         systemPrompt: String?
     ) {
         if (isLastMessage) {
-            val inputMessageFromRequest = gigaChatRequest.messages.first().content
+            val inputMessageFromRequest = gigaChatRequest.messages.first().content ?: ""
             val systemPrompt = systemPrompt ?: ""
             val model = gigaChatResponse.model
             val tokenCountRequest = GigaChatTokenCountRequest(

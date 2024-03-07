@@ -15,23 +15,6 @@ import java.util.*
 import javax.net.ssl.SSLContext
 import javax.net.ssl.TrustManagerFactory
 import javax.net.ssl.X509TrustManager
-import io.ktor.client.*
-import io.ktor.client.HttpClient
-import io.ktor.client.engine.apache.Apache
-import io.ktor.client.request.post
-import io.ktor.client.request.header
-import io.ktor.client.request.accept
-import io.ktor.http.*
-import io.ktor.http.ContentType
-import io.ktor.http.ContentType.Application.Json
-import io.ktor.http.contentType
-import kotlinx.serialization.json.*
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.decodeFromString
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
-
-
 
 
 /*
@@ -64,6 +47,11 @@ data class AthinaApiRequestSync(
     val prompt: Prompt,
     val response: GigaChatResponse
 )
+data class AthinaApiRequestAsync(
+    val language_model_id: String,
+    val prompt: Prompt,
+    val response: String
+)
 
 data class Prompt(
     val role: String,
@@ -73,11 +61,7 @@ data class Prompt(
 /*
  * Дата класс для запроса логирования Athina Асинхронный
  */
-data class AthinaApiRequestAsync(
-    val language_model_id: String,
-    val prompt: Prompt,
-    val response: GigaChatResponseAsync
-)
+
 
 /*
  Дата классы для подсчета токенов при запросе
@@ -279,7 +263,7 @@ class GigaChatConnector(val initConfig: InitConfig) {
                     index = 0
                 )
             ),
-            model = gigaReq.model,
+            model = "GigaChat",
             `object` = "chat.completion",
             created = System.currentTimeMillis()
         )
@@ -361,6 +345,9 @@ class GigaChatConnector(val initConfig: InitConfig) {
         }
         return JSON.parse(response.body!!.string(), GigaChatTokenCountResponse::class.java)
     }
+    /*
+     * Синхронное и Асинхронное отправление логов в Athina
+     */
 
     fun sendLogsInferenceToAthinaSync(
         gigaChatRequest: GigaChatRequest,
@@ -391,207 +378,50 @@ class GigaChatConnector(val initConfig: InitConfig) {
     }
 
 
-//    suspend fun sendLogsInferenceToAthinaAsync(
-//        gigaChatRequest: GigaChatRequest,
-//        gigaChatResponse: GigaChatResponseAsync
-//    ): AthinaApiResponse {
-//        val client = HttpClient(Apache)
-//
-//        try {
-//            var body = buildJsonObject {
-//                put("language_model_id", "")
-//                putJsonObject("prompt") {
-//                    put("role", JsonPrimitive(gigaChatRequest.messages.first().role))
-//                    put("content", JsonPrimitive(gigaChatRequest.messages.first().content))
-//                }
-//                put("response", JsonObject(mapOf()))
-//            }
-//
-//            val jsonString = JSON.stringify(body)
-//            var response = client.post<String>("https://log.athina.ai/api/v1/log/inference") {
-//                accept(ContentType.Application.Json)
-//                contentType(ContentType.Application.Json)
-//                header("athina-api-key", "UMY16LUIYnMlnYKaEqhhBWs8HZiDdgA9")
-//                body = body.toRequestBody(MEDIA_TYPE_JSON)
-////   .post(JSON.stringify(body).toRequestBody(MEDIA_TYPE_JSON))
-//            }
-//
-//            val result = Json.decodeFromString<AthinaApiResponse>(response)
-//            return result
-//        } finally {
-//            client.close()
-//        }
-//    }
 
+    fun sendLogsInferenceToAthinaAsync(
+        gigaChatRequest: GigaChatRequest,
+        gigaChatResponse: GigaChatResponseAsync
+    ): AthinaApiResponse {
 
+        val body = AthinaApiRequestAsync(
+            language_model_id = "",
+            prompt = Prompt(
+                role = gigaChatRequest.messages.first().role ?: "user",
+                content = gigaChatRequest.messages.first().content ?: ""
+            ),
+            response = JSON.stringify(gigaChatResponse)
+        )
 
-
-//    fun sendLogsInferenceToAthinaAsync(
-//        gigaChatRequest: GigaChatRequest,
-//        gigaChatResponse: GigaChatResponseAsync
-//    ): AthinaApiResponse {
+//                ***Почему-то не работает и выдает ошибку 400
+//           response = GigaChatResponseAsync(
 //
-//        val body = AthinaApiRequestAsync(
-//            language_model_id = "",
-//            prompt = Prompt(
-//                role = gigaChatRequest.messages.first().role,
-//                content = gigaChatRequest.messages.first().content
-//            ),
-//            response = gigaChatResponse
-//        )
-//
-//        val request = Request.Builder()
-//            .url("https://log.athina.ai/api/v1/log/inference")
-//            .header("Content-Type", "application/json")
-//            .header("athina-api-key", "UMY16LUIYnMlnYKaEqhhBWs8HZiDdgA9")
-//            .post(JSON.stringify(body).toRequestBody(MEDIA_TYPE_JSON))
-//            .build()
-//
-//        val response = athinaClient.newCall(request).execute()
-//        if (!response.isSuccessful) {
-//            throw IOException("Unexpected code ${response.code}")
-//        }
-//        return JSON.parse(response.body!!.string(), AthinaApiResponse::class.java)
-//    }
-
-//    fun sendLogsInferenceToAthinaAsync(
-//        gigaChatRequest: GigaChatRequest,
-//        gigaChatResponseAsync: GigaChatResponseAsync,
-//        callback: (AthinaApiResponse?) -> Unit
-//    ) {
-//
-//        val body = AthinaApiRequestAsync(
-//            language_model_id = "",
-//            prompt = Prompt(
-//                role = gigaChatRequest.messages.first().role,
-//                content = gigaChatRequest.messages.first().content
-//            ),
-//            response = gigaChatResponseAsync
-//        )
-//        val emptyResponse = AthinaApiResponse(
-//            status = "error",
-//            Data(
-//                prompt_run_id = "id = null"
+//                choices = listOf(
+//                    Choices(
+//                        delta = Delta(
+//                            content = gigaChatResponse.choices.first().delta.content ?: "",
+//                            role = gigaChatResponse.choices.first().delta.role ?: "assistant",
+//                        ),
+//                        index = gigaChatResponse.choices.first().index ?: 0
+//                    )
+//                ),
+//                model = gigaChatResponse.model ?: "GigaChat:latest",
+//                `object` = gigaChatResponse.`object` ?: "chat.completion",
+//                created = gigaChatResponse.created ?: System.currentTimeMillis()
+//                )
 //            )
-//        )
-//
-//        val request = Request.Builder()
-//            .url("https://log.athina.ai/api/v1/log/inference")
-//            .header("Content-Type", "application/json")
-//            .header("athina-api-key", "UMY16LUIYnMlnYKaEqhhBWs8HZiDdgA9")
-//            .post(JSON.stringify(body).toRequestBody(MEDIA_TYPE_JSON))
-//            .build()
-//
-//        athinaClient.newCall(request).enqueue(object : Callback {
-//            override fun onFailure(call: Call, e: IOException) {
-//                println("ERROR AT ATHINA ON FAILURE")
-//                callback(emptyResponse)
-//            }
-//
-//            override fun onResponse(call: Call, response: Response) {
-//                if (response.isSuccessful) {
-//                    val result = JSON.parse(response.body!!.string(), AthinaApiResponse::class.java)
-//                    callback(result)
-//                } else {
-//                    println("ОШИБКА В ПОЛУЧЕНИИ ON_RESPONSE ${response.code}")
-//                    callback(emptyResponse)
-//                }
-//                response.close()
-//            }
-//        })
-//    }
-//
 
-//    fun sendLogsInferenceToAthinaAsync(
-//        gigaChatRequest: GigaChatRequest,
-//        gigaChatResponseAsync: GigaChatResponseAsync
-//    ): Deferred<AthinaApiResponse> {
-//        val athinaClient = OkHttpClient()
-//
-//        val body = AthinaApiRequestAsync(
-//            language_model_id = "",
-//            prompt = Prompt(
-//                role = gigaChatRequest.messages.first().role,
-//                content = gigaChatRequest.messages.first().content
-//            ),
-//            response = gigaChatResponseAsync
-//        )
-//
-//        val request = Request.Builder()
-//            .url("https://log.athina.ai/api/v1/log/inference")
-//            .header("Content-Type", "application/json")
-//            .header("athina-api-key", "UMY16LUIYnMlnYKaEqhhBWs8HZiDdgA9")
-//            .post(JSON.stringify(body).toRequestBody(MEDIA_TYPE_JSON))
-//            .build()
-//
-//        val deferred = CompletableDeferred<AthinaApiResponse>()
-//
-//        athinaClient.newCall(request).enqueue(object : Callback {
-//            override fun onResponse(call: Call, response: Response) {
-//                try {
-//                    if (response.isSuccessful) {
-//                        val result = JSON.parse(response.body!!.string(), AthinaApiResponse::class.java)
-//
-//                        println()
-//                        println("__________________________")
-//                        println(result)
-//                        println("__________________________")
-//                        println()
-//
-//                        deferred.complete(result)
-//                    } else {
-//                        deferred.completeExceptionally(IOException("Unexpected code ${response.code}"))
-//                    }
-//                } finally {
-//                    response.close()
-//                }
-//            }
-//
-//
-//            override fun onFailure(call: Call, e: IOException) {
-//                deferred.completeExceptionally(e)
-//            }
-//        })
-//
-//        return deferred
-//    }
+        val request = Request.Builder()
+            .url("https://log.athina.ai/api/v1/log/inference")
+            .header("Content-Type", "application/json")
+            .header("athina-api-key", "UMY16LUIYnMlnYKaEqhhBWs8HZiDdgA9")
+            .post(JSON.stringify(body).toRequestBody(MEDIA_TYPE_JSON))
+            .build()
 
-
-//     fun sendLogsInferenceToAthinaAsync(
-//        gigaChatRequest: GigaChatRequest,
-//        gigaChatResponseAsync: GigaChatResponseAsync
-//    ): AthinaApiResponse  {
-//        val athinaClient = OkHttpClient()
-//
-//        val body = AthinaApiRequestAsync(
-//            language_model_id = "",
-//            prompt = Prompt(
-//                role = gigaChatRequest.messages.first().role ?: "",
-//                content = gigaChatRequest.messages.first().content ?: ""
-//            ),
-//            response = gigaChatResponseAsync
-//        )
-//
-//        val request = Request.Builder()
-//            .url("https://log.athina.ai/api/v1/log/inference")
-//            .header("Content-Type", "application/json")
-//            .header("athina-api-key", "UMY16LUIYnMlnYKaEqhhBWs8HZiDdgA9")
-//            .post(JSON.stringify(body).toRequestBody(MEDIA_TYPE_JSON))
-//            .build()
-//
-//        try {
-//            val response = athinaClient.newCall(request).execute()
-//            if (!response.isSuccessful) {
-//                throw IOException("Unexpected code ${response.code}")
-//            }
-//            return JSON.parse(response.body!!.string(), AthinaApiResponse::class.java)
-//        } catch (e: IOException) {
-//            println("ОШИБКА В ПОЛУЧЕНИИ ОТВЕТА ОТ ATHINA")
-//
-//            throw Exception("Error while making HTTP request: ${e.message}", e)
-//        }
-//    }
-
-
-
+        val response = athinaClient.newCall(request).execute()
+        if (!response.isSuccessful) {
+            throw IOException("Unexpected code ${response.code}")
+        }
+        return JSON.parse(response.body!!.string(), AthinaApiResponse::class.java)
+    }
 }
