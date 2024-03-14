@@ -24,6 +24,9 @@ private const val URL_GIGA_CHAT_COMPLETION = "https://gigachat.devices.sberbank.
 private val MEDIA_TYPE_JSON = "application/json".toMediaType()
 private const val TOKEN_EXPIRATION_DURATION = 30 * 60 * 1000
 var CERT_PATH = ""
+/*
+ Отслеживание последнего сообщения для partialResponse
+ */
 var isFirstMessage = false
 var isLastMessage = false
 
@@ -317,6 +320,7 @@ class GigaChatConnector(val initConfig: InitConfig) {
 
                         isLastMessage = false
                         isFirstMessage = false
+                        count = 0
                     }
                 })
             } catch (e: Exception) {

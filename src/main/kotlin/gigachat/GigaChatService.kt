@@ -20,9 +20,9 @@ import kotlinx.coroutines.launch
  */
 
 data class InitConfig(
-    val baseUri: String,
+    val baseUri: String = "https://ngw.devices.sberbank.ru:9443/api/v2/oauth",
     val clientSecret: String,
-    val scope: String
+    val scope: String = "GIGACHAT_API_PERS"
 )
 
 /*
@@ -177,6 +177,9 @@ class GigaChatService : MlpService() {
     }
 
 
+    /*
+     * Создаем объект для отправки в Caila
+     */
     fun createPartialResponse(response: Any): ServiceToGateProto {
 
         return ServiceToGateProto.newBuilder()
